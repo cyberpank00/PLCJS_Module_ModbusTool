@@ -1,0 +1,11 @@
+build/
+build-*/
+*.user
+*.user.*
+CMakeLists.txt.user*
+.cache/
+.vscode/
+compile_commands.json
+*.exe
+*.o
+*.obj

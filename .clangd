@@ -1,0 +1,15 @@
+# clangd configuration for the module_tool Qt project.
+CompileFlags:
+  # Read Qt include paths / defines from the CMake compilation database.
+  # Regenerate the build dir with CMAKE_EXPORT_COMPILE_COMMANDS=ON (already set
+  # in CMakeLists.txt) so build-static/compile_commands.json exists.
+  CompilationDatabase: build-static
+
+# System include paths (libstdc++, CRT, Clang builtins) are provided by clangd's
+# --query-driver, which must be allowed to run the MinGW g++ used to build this
+# tool. Add this to "stm32cube-ide-clangd.arguments" in your Windsurf settings:
+#
+#   "--query-driver=C:/Qt/Tools/mingw1310_64/bin/*"
+#
+# (the STM32 firmware settings only whitelist the arm-none-eabi compilers, so
+# the host MinGW g++ must be whitelisted too). Then restart the clangd server.

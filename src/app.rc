@@ -1,0 +1,2 @@
+// Windows resource: sets the executable / taskbar icon.
+IDI_ICON1 ICON "icon.ico"
