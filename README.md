@@ -42,6 +42,46 @@ $env:Path = "C:\Qt\Tools\mingw1310_64\bin;" + $env:Path
 Либо просто открыть `CMakeLists.txt` в Qt Creator (kit Desktop Qt 6.11.1
 MinGW 64-bit) и собрать.
 
+### Статическая сборка (один самодостаточный `.exe`, ~6 МБ)
+
+Для распространения собирается один `.exe` без внешних зависимостей, слинкованный
+со **статическим** Qt, оптимизированным под размер. Итог — ~6 МБ (против ~28 МБ
+у обычной статической сборки).
+
+Использованный статический Qt (qtbase 6.11.1) сконфигурирован под размер:
+
+```
+configure -static -static-runtime -release -platform win32-g++ `
+    -no-opengl -no-openssl -optimize-size -no-feature-gif -no-feature-jpeg `
+    -nomake examples -nomake tests -prefix D:/qt-static/install-size `
+    -- "-DCMAKE_CXX_FLAGS=-ffunction-sections -fdata-sections" `
+       "-DCMAKE_C_FLAGS=-ffunction-sections -fdata-sections"
+```
+
+Ключевые приёмы уменьшения: `-optimize-size` (`-Os`), `-ffunction-sections`
+(вместе с `-Wl,--gc-sections` на стороне приложения удаляются неиспользуемые
+функции), отключение форматов GIF/JPEG. LTO (`-ltcg`/`-flto`) **не используется**:
+встроенный MinGW GCC 13.1.0 падает с internal compiler error.
+
+Сборка приложения против такого Qt (генератор Ninja):
+
+```powershell
+$env:Path = "C:\Qt\Tools\mingw1310_64\bin;C:\Qt\Tools\Ninja;C:\Qt\Tools\upx;" + $env:Path
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" -B build-static -G Ninja `
+    "-DCMAKE_BUILD_TYPE=MinSizeRel" `
+    "-DCMAKE_PREFIX_PATH=D:/qt-static/install-size" `
+    "-DCMAKE_C_COMPILER=C:/Qt/Tools/mingw1310_64/bin/gcc.exe" `
+    "-DCMAKE_CXX_COMPILER=C:/Qt/Tools/mingw1310_64/bin/g++.exe" `
+    "-DCMAKE_RC_COMPILER=C:/Qt/Tools/mingw1310_64/bin/windres.exe"
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" --build build-static
+```
+
+Финальный `.exe` дополнительно сжимается упаковщиком **UPX** (`--best --lzma`)
+автоматическим post-build шагом, если `upx` доступен в `PATH` (или в
+`C:\Qt\Tools\upx`). UPX — свободное ПО (GPLv2+), лицензия явно разрешает сжатие
+коммерческих программ; исполняемый файл самораспаковывается в память при запуске.
+Отключить сжатие: `-DMODULE_TOOL_UPX=OFF`.
+
 ## Запуск
 
 ```powershell

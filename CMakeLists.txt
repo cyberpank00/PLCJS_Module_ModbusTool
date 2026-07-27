@@ -58,13 +58,20 @@ target_include_directories(module_tool PRIVATE src)
 target_link_libraries(module_tool PRIVATE Qt6::Widgets Qt6::Network)
 
 # Static single-file build: shrink the exe by letting the linker drop unused
-# code/data sections and by stripping symbols. Only for the static Qt build so
-# the normal (shared) developer build is untouched.
+# code/data sections and by stripping symbols. Applied to the size-oriented
+# configs (Release, MinSizeRel) only for the static Qt build, so the normal
+# (shared) developer build is untouched. Use MinSizeRel (-Os) for the smallest
+# binary.
+#
+# NOTE: -flto is intentionally not used — the bundled MinGW GCC 13.1.0 hits an
+# internal compiler error (binds_to_current_def_p, symtab.cc:2497) when linking
+# this project with LTO enabled.
 if(NOT QT6_IS_SHARED_LIBS_BUILD)
+    set(_size_cfg "$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>")
     target_compile_options(module_tool PRIVATE
-        $<$<CONFIG:Release>:-ffunction-sections -fdata-sections>)
+        "$<${_size_cfg}:-ffunction-sections;-fdata-sections>")
     target_link_options(module_tool PRIVATE
-        $<$<CONFIG:Release>:-Wl,--gc-sections -s>)
+        "$<${_size_cfg}:-Wl,--gc-sections;-s>")
 endif()
 
 # When building against a static Qt, make sure the native Windows style plugin
@@ -73,6 +80,27 @@ endif()
 if(WIN32 AND NOT QT6_IS_SHARED_LIBS_BUILD)
     if(TARGET Qt6::QModernWindowsStylePlugin)
         qt_import_plugins(module_tool INCLUDE Qt6::QModernWindowsStylePlugin)
+    endif()
+endif()
+
+# Compress the final static executable with UPX (https://upx.github.io/).
+# Shrinks the static build (~20 MB) down to ~6 MB. UPX is free software (GPLv2+)
+# whose license explicitly permits compressing commercial executables; the exe
+# is self-decompressing (a few ms of extra startup time, no other cost).
+# Enabled automatically for the static release build when 'upx' is found on PATH
+# (or in C:/Qt/Tools/upx); disable with -DMODULE_TOOL_UPX=OFF.
+if(NOT QT6_IS_SHARED_LIBS_BUILD AND CMAKE_BUILD_TYPE MATCHES "^(Release|MinSizeRel)$")
+    option(MODULE_TOOL_UPX "Compress the static executable with UPX" ON)
+    if(MODULE_TOOL_UPX)
+        find_program(UPX_EXECUTABLE NAMES upx HINTS "C:/Qt/Tools/upx")
+        if(UPX_EXECUTABLE)
+            add_custom_command(TARGET module_tool POST_BUILD
+                COMMAND "${UPX_EXECUTABLE}" --best --lzma "$<TARGET_FILE:module_tool>"
+                COMMENT "Compressing executable with UPX"
+                VERBATIM)
+        else()
+            message(STATUS "UPX not found; skipping compression (set -DMODULE_TOOL_UPX=OFF to silence)")
+        endif()
     endif()
 endif()
 
