@@ -1,2 +1,39 @@
-// Windows resource: sets the executable / taskbar icon.
+// Window / taskbar icon
 IDI_ICON1 ICON "icon.ico"
+
+// VERSIONINFO - Properties -> Details tab in Windows Explorer
+// Resource ID=1, ANSI codepage 1252 (040904E4) for maximum compatibility
+// with MinGW/LLVM windres.
+// Update version strings together with app_version.h.
+#include "app_version.h"
+
+LANGUAGE 0x09, 0x01  // LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+1 VERSIONINFO
+FILEVERSION     APP_VERSION_COMMA
+PRODUCTVERSION  APP_VERSION_COMMA
+FILEFLAGSMASK   0x3fL
+FILEFLAGS       0x0L
+FILEOS          0x40004L
+FILETYPE        0x1L
+FILESUBTYPE     0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904E4"
+        BEGIN
+            VALUE "CompanyName",      "PLCJS\0"
+            VALUE "FileDescription",  "PLCJS Module Tool\0"
+            VALUE "FileVersion",      APP_VERSION_STR "\0"
+            VALUE "InternalName",     "module_tool\0"
+            VALUE "LegalCopyright",   "Copyright (c) 2025 PLCJS\0"
+            VALUE "OriginalFilename", "module_tool.exe\0"
+            VALUE "ProductName",      "PLCJS Module Tool\0"
+            VALUE "ProductVersion",   APP_PRODUCT_VER "\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1252
+    END
+END

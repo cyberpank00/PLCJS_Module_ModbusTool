@@ -47,14 +47,10 @@ private slots:
 
 private:
     void setBusy(bool busy);
-    quint32 parseHex(const QLineEdit *edit, quint32 fallback) const;
 
     QLineEdit      *m_appIp;
     QLineEdit      *m_bootIp;
     QSpinBox       *m_port;
-    QLineEdit      *m_fwVersion;
-    QLineEdit      *m_productId;
-    QSpinBox       *m_hwRev;
 
     QLineEdit      *m_file;
     QLabel         *m_fileInfo;
@@ -72,6 +68,7 @@ private:
 
     // Status panel labels.
     QLabel *m_lBootState;
+    QLabel *m_lBootVer;
     QLabel *m_lLastError;
     QLabel *m_lAppValid;
     QLabel *m_lAppVer;

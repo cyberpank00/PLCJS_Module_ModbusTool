@@ -12,7 +12,12 @@ struct FwUpdateParams {
     QString appIp;
     quint16 port = boot::kDefaultPort;
     QString filePath;
-    quint32 fwVersion = 0x00010000u;
+    // These three are compile-time constants defined in the bootloader.
+    // The tool must never let the user override them:
+    //   fwVersion — bootloader stores 0; actual version is read from fw_header_t
+    //   productId — must match PRODUCT_ID_DEFAULT baked into the bootloader binary
+    //   hwRev     — (major<<8)|minor, must match HW_REVISION_DEFAULT major byte
+    quint32 fwVersion = 0u;
     quint32 productId = boot::kProductIdDefault;
     quint16 hwRev     = boot::kHwRevisionDefault;
 };

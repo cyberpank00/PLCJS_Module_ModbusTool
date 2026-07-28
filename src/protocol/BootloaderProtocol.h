@@ -18,13 +18,15 @@ constexpr char    kDefaultBootIp[]  = "192.168.142.99";
 constexpr char    kDefaultAppIp[]   = "192.168.142.98";
 
 constexpr quint32 kProductIdDefault = 0x12D1D4A0u;
-constexpr quint16 kHwRevisionDefault = 1;
+constexpr quint16 kHwRevisionDefault = 0x0101u; // (major<<8)|minor for OTA params
 constexpr quint32 kBootloaderMagic  = 0xB00710ADu;
 
 constexpr int     kFwMaxBlockSize   = 240;          // bytes, must match flash_map.h
 constexpr quint32 kStagingFlashSize = 256u * 1024u; // 256 KB
 
 // ---- Input registers (FC04, base 0x0000) --------------------------------
+// NOTE: IR_HW_REV_HI occupies two registers (32-bit, (major<<16)|(minor<<8)|patch).
+//       All registers from IR_LAST_ERROR onward are shifted by +1 vs. older firmware.
 enum InputReg : quint16 {
     IR_MAGIC_HI       = 0x0000,
     IR_VERSION_HI     = 0x0002,
@@ -32,15 +34,15 @@ enum InputReg : quint16 {
     IR_APP_VALID      = 0x0005,
     IR_APP_VER_HI     = 0x0006,
     IR_PRODUCT_ID_HI  = 0x0008,
-    IR_HW_REV         = 0x000A,
-    IR_LAST_ERROR     = 0x000B,
-    IR_BLOCK_COUNT_HI = 0x000C,
-    IR_RECV_BLOCKS_HI = 0x000E,
-    IR_IMAGE_SIZE_HI  = 0x0010,
-    IR_IMAGE_CRC_HI   = 0x0012,
-    IR_CMD_STATUS     = 0x0014,
-    IR_STAGING_VALID  = 0x0015,
-    IR_COUNT          = 0x0016,
+    IR_HW_REV_HI      = 0x000A,  // 32-bit: 0x0A (hi word) + 0x0B (lo word)
+    IR_LAST_ERROR     = 0x000C,  // was 0x0B
+    IR_BLOCK_COUNT_HI = 0x000D,  // was 0x0C
+    IR_RECV_BLOCKS_HI = 0x000F,  // was 0x0E
+    IR_IMAGE_SIZE_HI  = 0x0011,  // was 0x10
+    IR_IMAGE_CRC_HI   = 0x0013,  // was 0x12
+    IR_CMD_STATUS     = 0x0015,  // was 0x14
+    IR_STAGING_VALID  = 0x0016,  // was 0x15
+    IR_COUNT          = 0x0017,  // was 0x16
 };
 
 // ---- Holding registers (FC03/FC16, base 0x0000) -------------------------
@@ -81,7 +83,7 @@ struct Status {
     quint16 appValid    = 0;
     quint32 appVersion  = 0;
     quint32 productId   = 0;
-    quint16 hwRev       = 0;
+    quint32 hwRev       = 0; // (major<<16)|(minor<<8)|patch
     quint16 lastError   = 0;
     quint32 blockCount  = 0;
     quint32 recvBlocks  = 0;

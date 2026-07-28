@@ -13,7 +13,7 @@ Status parseStatus(const QVector<quint16> &regs)
     s.appValid     = regs[IR_APP_VALID];
     s.appVersion   = u32FromRegs(regs, IR_APP_VER_HI);
     s.productId    = u32FromRegs(regs, IR_PRODUCT_ID_HI);
-    s.hwRev        = regs[IR_HW_REV];
+    s.hwRev        = u32FromRegs(regs, IR_HW_REV_HI); // 32-bit: major.minor.patch
     s.lastError    = regs[IR_LAST_ERROR];
     s.blockCount   = u32FromRegs(regs, IR_BLOCK_COUNT_HI);
     s.recvBlocks   = u32FromRegs(regs, IR_RECV_BLOCKS_HI);

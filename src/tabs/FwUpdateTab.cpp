@@ -26,20 +26,11 @@ FwUpdateTab::FwUpdateTab(QWidget *parent)
     m_port = new QSpinBox;
     m_port->setRange(1, 65535);
     m_port->setValue(boot::kDefaultPort);
-    m_fwVersion = new QLineEdit(QStringLiteral("0x00010000"));
-    m_productId = new QLineEdit(QStringLiteral("0x%1").arg(boot::kProductIdDefault, 8, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x")));
-    m_hwRev = new QSpinBox;
-    m_hwRev->setRange(0, 65535);
-    m_hwRev->setValue(boot::kHwRevisionDefault);
-
     auto *paramBox = new QGroupBox(QStringLiteral("Параметры"));
     auto *paramForm = new QFormLayout(paramBox);
     paramForm->addRow(QStringLiteral("IP приложения:"), m_appIp);
     paramForm->addRow(QStringLiteral("IP загрузчика:"), m_bootIp);
     paramForm->addRow(QStringLiteral("Порт:"), m_port);
-    paramForm->addRow(QStringLiteral("Версия FW (hex):"), m_fwVersion);
-    paramForm->addRow(QStringLiteral("Product ID (hex):"), m_productId);
-    paramForm->addRow(QStringLiteral("HW revision:"), m_hwRev);
 
     // ---- File picker -----------------------------------------------------
     m_file = new QLineEdit;
@@ -81,6 +72,7 @@ FwUpdateTab::FwUpdateTab(QWidget *parent)
     // ---- Status panel ----------------------------------------------------
     auto makeLabel = []() { return new QLabel(QStringLiteral("—")); };
     m_lBootState = makeLabel();
+    m_lBootVer = makeLabel();
     m_lLastError = makeLabel();
     m_lAppValid = makeLabel();
     m_lAppVer = makeLabel();
@@ -94,8 +86,9 @@ FwUpdateTab::FwUpdateTab(QWidget *parent)
 
     auto *statusBox = new QGroupBox(QStringLiteral("Статус загрузчика"));
     auto *sForm = new QFormLayout(statusBox);
-    sForm->addRow(QStringLiteral("Boot state:"), m_lBootState);
-    sForm->addRow(QStringLiteral("Last error:"), m_lLastError);
+    sForm->addRow(QStringLiteral("Boot state:"),      m_lBootState);
+    sForm->addRow(QStringLiteral("Bootloader ver:"),  m_lBootVer);
+    sForm->addRow(QStringLiteral("Last error:"),      m_lLastError);
     sForm->addRow(QStringLiteral("App valid:"), m_lAppValid);
     sForm->addRow(QStringLiteral("App version:"), m_lAppVer);
     sForm->addRow(QStringLiteral("Product ID:"), m_lProductId);
@@ -156,15 +149,6 @@ FwUpdateTab::~FwUpdateTab()
     m_thread->wait();
 }
 
-quint32 FwUpdateTab::parseHex(const QLineEdit *edit, quint32 fallback) const
-{
-    QString t = edit->text().trimmed();
-    if (t.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive))
-        t = t.mid(2);
-    bool ok = false;
-    const quint32 v = t.toUInt(&ok, 16);
-    return ok ? v : fallback;
-}
 
 void FwUpdateTab::onSelectFile()
 {
@@ -214,9 +198,9 @@ void FwUpdateTab::onFlashClicked()
     p.appIp = m_appIp->text().trimmed();
     p.port = quint16(m_port->value());
     p.filePath = m_file->text();
-    p.fwVersion = parseHex(m_fwVersion, 0x00010000u);
-    p.productId = parseHex(m_productId, boot::kProductIdDefault);
-    p.hwRev = quint16(m_hwRev->value());
+    // fwVersion, productId, hwRev come from FwUpdateParams defaults —
+    // these are compile-time constants defined in the bootloader; the user
+    // must not change them through the tool.
 
     setBusy(true);
     m_progress->setValue(0);
@@ -253,13 +237,22 @@ void FwUpdateTab::onProgress(int done, int total)
 void FwUpdateTab::onStatusUpdated(const boot::Status &s)
 {
     m_lBootState->setText(QStringLiteral("%1 (%2)").arg(boot::bootStateName(s.bootState)).arg(s.bootState));
+    m_lBootVer->setText(QStringLiteral("%1.%2")
+        .arg(s.version >> 8,    2, 10, QChar('0'))
+        .arg(s.version & 0xFF,  2, 10, QChar('0')));
     m_lLastError->setText(QStringLiteral("%1 (%2)").arg(boot::errorName(s.lastError)).arg(s.lastError));
     m_lAppValid->setText(QString::number(s.appValid));
-    m_lAppVer->setText(QStringLiteral("%1.%2.%3")
-                           .arg(s.appVersion >> 16).arg((s.appVersion >> 8) & 0xFF).arg(s.appVersion & 0xFF));
+    m_lAppVer->setText(s.appValid
+        ? QStringLiteral("%1.%2")
+              .arg(s.appVersion >> 8,   2, 10, QChar('0'))
+              .arg(s.appVersion & 0xFF, 2, 10, QChar('0'))
+        : QStringLiteral("—"));
     m_lProductId->setText(QStringLiteral("0x%1").arg(s.productId, 8, 16, QChar('0')).toUpper()
                               .replace(QStringLiteral("0X"), QStringLiteral("0x")));
-    m_lHwRev->setText(QString::number(s.hwRev));
+    m_lHwRev->setText(QStringLiteral("%1.%2.%3")
+        .arg((s.hwRev >> 16) & 0xFF, 2, 10, QChar('0'))
+        .arg((s.hwRev >>  8) & 0xFF, 2, 10, QChar('0'))
+        .arg( s.hwRev        & 0xFF, 2, 10, QChar('0')));
     m_lBlocks->setText(QStringLiteral("%1 / %2").arg(s.recvBlocks).arg(s.blockCount));
     m_lImageSize->setText(QStringLiteral("%1 байт").arg(s.imageSize));
     m_lImageCrc->setText(QStringLiteral("0x%1").arg(s.imageCrc, 8, 16, QChar('0')).toUpper()

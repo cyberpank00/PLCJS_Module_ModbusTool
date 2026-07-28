@@ -1,11 +1,22 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(module_tool VERSION 0.1.0 LANGUAGES CXX)
-
-# Enable the Windows resource compiler so src/app.rc (exe icon) can be built.
-if(WIN32)
-    enable_language(RC)
+# Use llvm-windres as the RC compiler on Windows (MinGW bundled by Qt).
+# GNU windres silently generates a malformed VERSIONINFO block that
+# Windows Explorer cannot read; llvm-windres does not have this bug.
+if(WIN32 AND NOT DEFINED CMAKE_RC_COMPILER)
+    find_program(LLVM_WINDRES
+        NAMES llvm-windres
+        HINTS "C:/Qt/Tools/llvm-mingw1706_64/bin"
+        NO_DEFAULT_PATH)
+    if(LLVM_WINDRES)
+        set(CMAKE_RC_COMPILER "${LLVM_WINDRES}" CACHE FILEPATH
+            "RC compiler (llvm-windres)" FORCE)
+    endif()
 endif()
+
+project(module_tool VERSION 0.1.0 LANGUAGES CXX RC)
+
+set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,6 +39,9 @@ qt_add_executable(module_tool
     # Window/title-bar icon (embedded via Qt resource) + Windows exe icon (.rc).
     src/resources.qrc
     $<$<BOOL:${WIN32}>:${CMAKE_CURRENT_SOURCE_DIR}/src/app.rc>
+
+    src/app_version.h
+    src/version.h
 
     src/MainWindow.h
     src/MainWindow.cpp
