@@ -182,10 +182,32 @@ void FwWorker::runUpdate(const FwUpdateParams &p)
     const int blockSize     = boot::kFwMaxBlockSize;
     const int blockCount    = int((imageSize + blockSize - 1) / blockSize);
 
+    // Identity is taken from the image's own fw_header_t — never hardcoded —
+    // so a single tool build flashes every module variant. The bootloader
+    // rejects the image if this identity does not match its own.
+    const boot::FwHeader hdr = boot::parseFwHeader(fw);
+    quint32 fwVersion = p.fwVersion;
+    quint32 productId = p.productId;
+    quint16 hwRev     = p.hwRev;
+    if (hdr.valid) {
+        fwVersion = hdr.fwVersion;
+        productId = hdr.productId;
+        hwRev     = hdr.hwRev;
+    } else {
+        emit logMessage(QStringLiteral("ВНИМАНИЕ: в образе нет заголовка fw_header_t "
+                                       "(magic 'PLCJ' по 0x200) — загрузчик отклонит образ."));
+    }
+
     emit logMessage(QStringLiteral("Файл:   %1").arg(p.filePath));
     emit logMessage(QStringLiteral("Размер: %1 байт").arg(imageSize));
     emit logMessage(QStringLiteral("CRC32:  0x%1").arg(imageCrc, 8, 16, QChar('0')));
     emit logMessage(QStringLiteral("Блоков: %1 по %2 Б").arg(blockCount).arg(blockSize));
+    if (hdr.valid) {
+        emit logMessage(QStringLiteral("Образ:  Product ID 0x%1  hw %2.%3  fw %4.%5")
+            .arg(productId, 8, 16, QChar('0'))
+            .arg((hwRev >> 8) & 0xFF, 2, 10, QChar('0')).arg(hwRev & 0xFF, 2, 10, QChar('0'))
+            .arg((fwVersion >> 8) & 0xFF, 2, 10, QChar('0')).arg(fwVersion & 0xFF, 2, 10, QChar('0')));
+    }
 
     if (imageSize > boot::kStagingFlashSize) {
         emit operationFinished(false, QStringLiteral("Образ больше staging (%1 > %2)")
@@ -204,9 +226,9 @@ void FwWorker::runUpdate(const FwUpdateParams &p)
     QVector<quint16> params = {
         quint16((imageSize >> 16) & 0xFFFF), quint16(imageSize & 0xFFFF),
         quint16((imageCrc >> 16) & 0xFFFF),  quint16(imageCrc & 0xFFFF),
-        quint16((p.fwVersion >> 16) & 0xFFFF), quint16(p.fwVersion & 0xFFFF),
-        quint16((p.productId >> 16) & 0xFFFF), quint16(p.productId & 0xFFFF),
-        p.hwRev,
+        quint16((fwVersion >> 16) & 0xFFFF), quint16(fwVersion & 0xFFFF),
+        quint16((productId >> 16) & 0xFFFF), quint16(productId & 0xFFFF),
+        hwRev,
         quint16(blockSize),
         quint16((quint32(blockCount) >> 16) & 0xFFFF), quint16(quint32(blockCount) & 0xFFFF),
     };

@@ -21,7 +21,30 @@ Status parseStatus(const QVector<quint16> &regs)
     s.imageCrc     = u32FromRegs(regs, IR_IMAGE_CRC_HI);
     s.cmdStatus    = regs[IR_CMD_STATUS];
     s.stagingValid = regs[IR_STAGING_VALID];
+    s.appProductId = u32FromRegs(regs, IR_APP_PRODUCT_ID_HI);
     return s;
+}
+
+FwHeader parseFwHeader(const QByteArray &image)
+{
+    FwHeader h;
+    // fw_header_t (packed): magic(4) product_id(4) hw_revision(2) reserved0(2)
+    //                       fw_version(4) ...  — little-endian on the STM32.
+    if (image.size() < kFwHeaderOffset + 16)
+        return h;
+    const auto *p = reinterpret_cast<const quint8 *>(image.constData()) + kFwHeaderOffset;
+    auto rd32 = [](const quint8 *b) {
+        return quint32(b[0]) | (quint32(b[1]) << 8) | (quint32(b[2]) << 16) | (quint32(b[3]) << 24);
+    };
+    auto rd16 = [](const quint8 *b) { return quint16(b[0]) | (quint16(b[1]) << 8); };
+
+    if (rd32(p) != kFwImageMagic)
+        return h; // no valid header
+    h.valid     = true;
+    h.productId = rd32(p + 4);
+    h.hwRev     = rd16(p + 8);
+    h.fwVersion = rd32(p + 12);
+    return h;
 }
 
 QString bootStateName(quint16 state)

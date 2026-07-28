@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -77,6 +78,7 @@ FwUpdateTab::FwUpdateTab(QWidget *parent)
     m_lAppValid = makeLabel();
     m_lAppVer = makeLabel();
     m_lProductId = makeLabel();
+    m_lAppProductId = makeLabel();
     m_lHwRev = makeLabel();
     m_lBlocks = makeLabel();
     m_lImageSize = makeLabel();
@@ -91,7 +93,8 @@ FwUpdateTab::FwUpdateTab(QWidget *parent)
     sForm->addRow(QStringLiteral("Last error:"),      m_lLastError);
     sForm->addRow(QStringLiteral("App valid:"), m_lAppValid);
     sForm->addRow(QStringLiteral("App version:"), m_lAppVer);
-    sForm->addRow(QStringLiteral("Product ID:"), m_lProductId);
+    sForm->addRow(QStringLiteral("Product ID (загр.):"), m_lProductId);
+    sForm->addRow(QStringLiteral("Product ID (прил.):"), m_lAppProductId);
     sForm->addRow(QStringLiteral("HW revision:"), m_lHwRev);
     sForm->addRow(QStringLiteral("Blocks:"), m_lBlocks);
     sForm->addRow(QStringLiteral("Image size:"), m_lImageSize);
@@ -168,10 +171,22 @@ void FwUpdateTab::onSelectFile()
     m_file->setText(path);
 
     const quint32 crc = crc32_ieee(m_fwData);
-    m_fileInfo->setText(QStringLiteral("Размер: %1 байт    CRC32: 0x%2")
-                            .arg(m_fwData.size())
-                            .arg(crc, 8, 16, QChar('0')).toUpper()
-                            .replace(QStringLiteral("CRC32: 0X"), QStringLiteral("CRC32: 0x")));
+    m_binHeader = boot::parseFwHeader(m_fwData);
+
+    QString info = QStringLiteral("Размер: %1 байт    CRC32: 0x%2")
+                       .arg(m_fwData.size())
+                       .arg(crc, 8, 16, QChar('0'));
+    if (m_binHeader.valid) {
+        info += QStringLiteral("\nОбраз: Product ID 0x%1   hw %2.%3   fw %4.%5")
+                    .arg(m_binHeader.productId, 8, 16, QChar('0'))
+                    .arg((m_binHeader.hwRev >> 8) & 0xFF, 2, 10, QChar('0'))
+                    .arg(m_binHeader.hwRev & 0xFF, 2, 10, QChar('0'))
+                    .arg((m_binHeader.fwVersion >> 8) & 0xFF, 2, 10, QChar('0'))
+                    .arg(m_binHeader.fwVersion & 0xFF, 2, 10, QChar('0'));
+    } else {
+        info += QStringLiteral("\nОбраз: нет заголовка fw_header_t (magic 'PLCJ' по 0x200)");
+    }
+    m_fileInfo->setText(info);
 }
 
 void FwUpdateTab::onStatusClicked()
@@ -193,14 +208,35 @@ void FwUpdateTab::onFlashClicked()
         onLog(QStringLiteral("Сначала выберите файл прошивки."));
         return;
     }
+    // Identity is read from the image's fw_header_t (see FwWorker). Guard the
+    // operator against flashing an image built for a different module: compare
+    // the image's product_id with the bootloader's, if we have both.
+    if (!m_binHeader.valid) {
+        const auto r = QMessageBox::warning(this, QStringLiteral("Нет заголовка"),
+            QStringLiteral("В образе не найден заголовок fw_header_t (magic 'PLCJ' по 0x200).\n"
+                           "Загрузчик, скорее всего, отклонит такой образ.\n\nПрошить всё равно?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (r != QMessageBox::Yes) return;
+    } else if (m_blProductKnown && m_binHeader.productId != m_blProductId) {
+        const auto r = QMessageBox::warning(this, QStringLiteral("Несовпадение Product ID"),
+            QStringLiteral("Product ID образа (0x%1) не совпадает с Product ID загрузчика (0x%2).\n"
+                           "Этот образ предназначен для другого типа модуля.\n\nПрошить всё равно?")
+                .arg(m_binHeader.productId, 8, 16, QChar('0'))
+                .arg(m_blProductId, 8, 16, QChar('0')),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (r != QMessageBox::Yes) return;
+    } else if (!m_blProductKnown) {
+        onLog(QStringLiteral("Статус загрузчика неизвестен — сначала нажмите «Статус» "
+                             "для проверки Product ID. Продолжаю без сравнения."));
+    }
+
     FwUpdateParams p;
     p.bootIp = m_bootIp->text().trimmed();
     p.appIp = m_appIp->text().trimmed();
     p.port = quint16(m_port->value());
     p.filePath = m_file->text();
-    // fwVersion, productId, hwRev come from FwUpdateParams defaults —
-    // these are compile-time constants defined in the bootloader; the user
-    // must not change them through the tool.
+    // fwVersion, productId, hwRev are taken from the image's own fw_header_t
+    // inside FwWorker::runUpdate — never entered by the user.
 
     setBusy(true);
     m_progress->setValue(0);
@@ -247,8 +283,12 @@ void FwUpdateTab::onStatusUpdated(const boot::Status &s)
               .arg(s.appVersion >> 8,   2, 10, QChar('0'))
               .arg(s.appVersion & 0xFF, 2, 10, QChar('0'))
         : QStringLiteral("—"));
-    m_lProductId->setText(QStringLiteral("0x%1").arg(s.productId, 8, 16, QChar('0')).toUpper()
-                              .replace(QStringLiteral("0X"), QStringLiteral("0x")));
+    m_lProductId->setText(QStringLiteral("0x%1").arg(s.productId, 8, 16, QChar('0')));
+    m_lAppProductId->setText(s.appValid && s.appProductId
+        ? QStringLiteral("0x%1").arg(s.appProductId, 8, 16, QChar('0'))
+        : QStringLiteral("—"));
+    m_blProductId = s.productId;
+    m_blProductKnown = true;
     m_lHwRev->setText(QStringLiteral("%1.%2.%3")
         .arg((s.hwRev >> 16) & 0xFF, 2, 10, QChar('0'))
         .arg((s.hwRev >>  8) & 0xFF, 2, 10, QChar('0'))

@@ -17,12 +17,16 @@ constexpr quint8  kDefaultUnitId    = 1;
 constexpr char    kDefaultBootIp[]  = "192.168.142.99";
 constexpr char    kDefaultAppIp[]   = "192.168.142.98";
 
-constexpr quint32 kProductIdDefault = 0x12D1D4A0u;
+constexpr quint32 kProductIdDefault = 0x504C1201u; // 12di; fallback only
 constexpr quint16 kHwRevisionDefault = 0x0101u; // (major<<8)|minor for OTA params
 constexpr quint32 kBootloaderMagic  = 0xB00710ADu;
 
 constexpr int     kFwMaxBlockSize   = 240;          // bytes, must match flash_map.h
 constexpr quint32 kStagingFlashSize = 256u * 1024u; // 256 KB
+
+// ---- Firmware image header (fw_header_t, at offset 0x200 in the .bin) ----
+constexpr int     kFwHeaderOffset = 0x200;
+constexpr quint32 kFwImageMagic   = 0x504C434Au; // "PLCJ"
 
 // ---- Input registers (FC04, base 0x0000) --------------------------------
 // NOTE: IR_HW_REV_HI occupies two registers (32-bit, (major<<16)|(minor<<8)|patch).
@@ -40,9 +44,10 @@ enum InputReg : quint16 {
     IR_RECV_BLOCKS_HI = 0x000F,  // was 0x0E
     IR_IMAGE_SIZE_HI  = 0x0011,  // was 0x10
     IR_IMAGE_CRC_HI   = 0x0013,  // was 0x12
-    IR_CMD_STATUS     = 0x0015,  // was 0x14
-    IR_STAGING_VALID  = 0x0016,  // was 0x15
-    IR_COUNT          = 0x0017,  // was 0x16
+    IR_CMD_STATUS       = 0x0015,  // was 0x14
+    IR_STAGING_VALID    = 0x0016,  // was 0x15
+    IR_APP_PRODUCT_ID_HI = 0x0017, // installed app product_id (2 regs)
+    IR_COUNT            = 0x0019,
 };
 
 // ---- Holding registers (FC03/FC16, base 0x0000) -------------------------
@@ -82,7 +87,8 @@ struct Status {
     quint16 bootState   = 0;
     quint16 appValid    = 0;
     quint32 appVersion  = 0;
-    quint32 productId   = 0;
+    quint32 productId   = 0;  // bootloader identity (PRODUCT_ID_DEFAULT)
+    quint32 appProductId = 0; // installed application's product_id (0 if none)
     quint32 hwRev       = 0; // (major<<16)|(minor<<8)|patch
     quint16 lastError   = 0;
     quint32 blockCount  = 0;
@@ -95,6 +101,17 @@ struct Status {
 
 // Parse a Status from an IR_COUNT-length register vector (read from 0x0000).
 Status parseStatus(const QVector<quint16> &regs);
+
+// ---- Parsed firmware-image header ---------------------------------------
+struct FwHeader {
+    bool    valid     = false; // true when magic == kFwImageMagic
+    quint32 productId = 0;
+    quint16 hwRev     = 0;     // (major<<8)|minor  — OTA "sent" form
+    quint32 fwVersion = 0;     // (major<<8)|minor
+};
+
+// Parse fw_header_t from a firmware image (reads at offset kFwHeaderOffset).
+FwHeader parseFwHeader(const QByteArray &image);
 
 // Human-readable names.
 QString bootStateName(quint16 state);

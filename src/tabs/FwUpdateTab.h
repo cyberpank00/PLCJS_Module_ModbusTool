@@ -56,6 +56,12 @@ private:
     QLabel         *m_fileInfo;
     QByteArray      m_fwData;
 
+    // Identity read from the selected image's fw_header_t, and the bootloader
+    // product_id from the last received status — used for the pre-flash check.
+    boot::FwHeader  m_binHeader;
+    quint32         m_blProductId   = 0;
+    bool            m_blProductKnown = false;
+
     QPushButton    *m_statusBtn;
     QPushButton    *m_bootBtn;
     QPushButton    *m_flashBtn;
@@ -72,7 +78,8 @@ private:
     QLabel *m_lLastError;
     QLabel *m_lAppValid;
     QLabel *m_lAppVer;
-    QLabel *m_lProductId;
+    QLabel *m_lProductId;    // bootloader identity
+    QLabel *m_lAppProductId; // installed application identity
     QLabel *m_lHwRev;
     QLabel *m_lBlocks;
     QLabel *m_lImageSize;
