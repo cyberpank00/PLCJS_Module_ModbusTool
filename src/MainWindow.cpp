@@ -2,6 +2,7 @@
 
 #include <QTabWidget>
 
+#include "tabs/DiscoveryTab.h"
 #include "tabs/FwUpdateTab.h"
 #include "tabs/OnlineTab.h"
 #include "tabs/SettingsTab.h"
@@ -13,6 +14,7 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle(QStringLiteral("PLCJS Module Tool ") + MODULE_TOOL_VERSION_QSTR);
 
     auto *tabs = new QTabWidget;
+    tabs->addTab(new DiscoveryTab, QStringLiteral("Обнаружение"));
     tabs->addTab(new OnlineTab, QStringLiteral("Онлайн"));
     tabs->addTab(new SettingsTab, QStringLiteral("Настройки"));
     tabs->addTab(new FwUpdateTab, QStringLiteral("Обновление FW"));

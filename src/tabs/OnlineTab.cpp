@@ -46,7 +46,7 @@ OnlineTab::OnlineTab(QWidget *parent)
     m_map = new QComboBox;
     m_map->addItems(maps::mapNames());
 
-    m_ip = new QLineEdit(QStringLiteral("192.168.142.89"));
+    m_ip = new QLineEdit(QStringLiteral("192.168.1.10"));
     m_port = new QSpinBox;
     m_port->setRange(1, 65535);
     m_port->setValue(boot::kDefaultPort);

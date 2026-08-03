@@ -14,8 +14,8 @@ namespace boot {
 // ---- Target defaults ----------------------------------------------------
 constexpr quint16 kDefaultPort      = 502;
 constexpr quint8  kDefaultUnitId    = 1;
-constexpr char    kDefaultBootIp[]  = "192.168.142.99";
-constexpr char    kDefaultAppIp[]   = "192.168.142.98";
+constexpr char    kDefaultBootIp[]  = "192.168.1.2";
+constexpr char    kDefaultAppIp[]   = "192.168.1.10";
 
 constexpr quint32 kProductIdDefault = 0x504C1201u; // 12di; fallback only
 constexpr quint16 kHwRevisionDefault = 0x0101u; // (major<<8)|minor for OTA params

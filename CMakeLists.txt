@@ -57,6 +57,9 @@ qt_add_executable(module_tool
     src/maps/ModuleMaps.h
     src/maps/ModuleMaps.cpp
 
+    src/tabs/DiscoveryTab.h
+    src/tabs/DiscoveryTab.cpp
+
     src/tabs/OnlineTab.h
     src/tabs/OnlineTab.cpp
     src/tabs/SettingsTab.h
