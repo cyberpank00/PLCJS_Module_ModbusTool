@@ -7,10 +7,61 @@
 
 #include "modbus/Crc32.h"
 #include "modbus/ModbusTcpClient.h"
+#include "protocol/Pdp.h"
 
 FwWorker::FwWorker(QObject *parent)
     : QObject(parent)
 {
+}
+
+bool FwWorker::isBootloaderReachable(const QString &ip, quint16 port)
+{
+    ModbusTcpClient c(1000);
+    if (!c.connectToServer(ip, port, boot::kDefaultUnitId))
+        return false;
+    QVector<quint16> regs;
+    if (!c.readInputRegisters(0x0000, boot::IR_COUNT, regs))
+        return false;
+    return boot::parseStatus(regs).magic == boot::kBootloaderMagic;
+}
+
+QString FwWorker::resolveBootIp(const QString &appIp, const QString &desiredIp, quint16 port)
+{
+    // 1) Already a bootloader answering at the desired IP?
+    if (isBootloaderReachable(desiredIp, port))
+        return desiredIp;
+
+    // Broadcast source NIC: the interface on the app's (or desired) subnet.
+    const QString nic = pdp::nicForPeer(appIp.isEmpty() ? desiredIp : appIp);
+    // Learn the target MAC from the app so we can match the right bootloader.
+    const QString mac = appIp.isEmpty() ? QString() : pdp::macForIp(nic, appIp, 3000);
+
+    emit logMessage(QStringLiteral("  %1 не отвечает как загрузчик; поиск по PDP (UDP/%2)...")
+                        .arg(desiredIp).arg(pdp::kPort));
+    pdp::Device dev;
+    if (!pdp::findBootloader(nic, mac, 20000, dev))
+        return QString();
+    emit logMessage(QStringLiteral("  Найден загрузчик %1 на %2").arg(dev.macStr, dev.ip));
+
+    // 2) Directly reachable from this host (same subnet)?
+    if (isBootloaderReachable(dev.ip, port))
+        return dev.ip;
+
+    // 3) Different subnet (link-local bootloader): reassign it live to the
+    //    desired IP via a discovery SET_NET, then wait for it there.
+    const QStringList o = desiredIp.split('.');
+    const QString gw = QStringLiteral("%1.%2.%3.1").arg(o.value(0), o.value(1), o.value(2));
+    emit logMessage(QStringLiteral("  %1 недоступен напрямую; назначаю %2 через SET_NET...")
+                        .arg(dev.ip, desiredIp));
+    pdp::setNetStatic(nic, dev.macStr, desiredIp, QStringLiteral("255.255.255.0"), gw);
+    QElapsedTimer t;
+    t.start();
+    while (t.elapsed() < 8000) {
+        if (isBootloaderReachable(desiredIp, port))
+            return desiredIp;
+        QThread::msleep(400);
+    }
+    return QString();
 }
 
 bool FwWorker::waitForStatus(ModbusTcpClient &c, quint16 expected, int timeoutMs)
@@ -155,11 +206,17 @@ void FwWorker::enterBootloader(const QString &appIp, const QString &bootIp, quin
         c.writeSingleRegister(boot::APP_HR_TRIGGER, boot::APP_CMD_BOOTLOADER);
     }
 
-    emit logMessage(QStringLiteral("Ожидание готовности загрузчика на %1...").arg(bootIp));
-    if (waitForBootloaderReady(bootIp, port, 20000)) {
-        emit operationFinished(true, QStringLiteral("Модуль в режиме загрузчика"));
+    emit logMessage(QStringLiteral("Поиск загрузчика (по умолчанию link-local, поиск по MAC)..."));
+    const QString resolved = resolveBootIp(appIp, bootIp, port);
+    if (resolved.isEmpty()) {
+        emit operationFinished(false, QStringLiteral("Загрузчик не найден (таймаут)"));
+        return;
+    }
+    emit bootIpResolved(resolved);
+    if (waitForBootloaderReady(resolved, port, 20000)) {
+        emit operationFinished(true, QStringLiteral("Модуль в режиме загрузчика (%1)").arg(resolved));
     } else {
-        emit operationFinished(false, QStringLiteral("Загрузчик не появился (таймаут)"));
+        emit operationFinished(false, QStringLiteral("Загрузчик не готов (таймаут)"));
     }
 }
 
@@ -215,8 +272,20 @@ void FwWorker::runUpdate(const FwUpdateParams &p)
         return;
     }
 
+    // The bootloader defaults to link-local; make sure we have its reachable
+    // IP (discover by MAC / reassign via SET_NET if the configured IP is silent).
+    QString bootIp = p.bootIp;
+    if (!isBootloaderReachable(bootIp, p.port)) {
+        bootIp = resolveBootIp(p.appIp, p.bootIp, p.port);
+        if (bootIp.isEmpty()) {
+            emit operationFinished(false, QStringLiteral("Загрузчик не найден"));
+            return;
+        }
+        emit bootIpResolved(bootIp);
+    }
+
     ModbusTcpClient c(6000);
-    if (!c.connectToServer(p.bootIp, p.port, boot::kDefaultUnitId)) {
+    if (!c.connectToServer(bootIp, p.port, boot::kDefaultUnitId)) {
         emit operationFinished(false, c.lastError());
         return;
     }

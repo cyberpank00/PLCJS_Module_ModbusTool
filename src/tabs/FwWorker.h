@@ -42,12 +42,22 @@ signals:
     void progress(int done, int total);
     void statusUpdated(const boot::Status &status);
     void operationFinished(bool ok, const QString &summary);
+    // Emitted when the bootloader's IP is discovered/reassigned so the UI can
+    // update its "boot IP" field for the follow-up flash.
+    void bootIpResolved(const QString &ip);
 
 private:
     // Poll IR_CMD_STATUS until it equals `expected` or hits ERROR/timeout.
     bool waitForStatus(class ModbusTcpClient &c, quint16 expected, int timeoutMs);
     // Wait until the bootloader answers at bootIp and is in WAIT_COMMAND.
     bool waitForBootloaderReady(const QString &bootIp, quint16 port, int timeoutMs);
+    // True if a bootloader (magic) answers Modbus at ip:port.
+    bool isBootloaderReachable(const QString &ip, quint16 port);
+    // Resolve the bootloader's reachable IP: the bootloader now defaults to a
+    // link-local address, so if `desiredIp` is silent, discover it by MAC (via
+    // PDP) and, when it sits on a different subnet, reassign it live to
+    // `desiredIp` with a discovery SET_NET. Returns "" on failure.
+    QString resolveBootIp(const QString &appIp, const QString &desiredIp, quint16 port);
 
     // Outcome of the INSTALL command. The bootloader jumps straight into the
     // application after installing, dropping the connection before it can

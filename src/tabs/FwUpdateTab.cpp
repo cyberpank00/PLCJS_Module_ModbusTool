@@ -142,6 +142,10 @@ FwUpdateTab::FwUpdateTab(QWidget *parent)
     connect(m_worker, &FwWorker::progress, this, &FwUpdateTab::onProgress);
     connect(m_worker, &FwWorker::statusUpdated, this, &FwUpdateTab::onStatusUpdated);
     connect(m_worker, &FwWorker::operationFinished, this, &FwUpdateTab::onFinished);
+    // Adopt the discovered/reassigned bootloader IP so the follow-up flash and
+    // status use it.
+    connect(m_worker, &FwWorker::bootIpResolved, this,
+            [this](const QString &ip) { m_bootIp->setText(ip); });
 
     m_thread->start();
 }

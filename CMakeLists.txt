@@ -53,6 +53,8 @@ qt_add_executable(module_tool
 
     src/protocol/BootloaderProtocol.h
     src/protocol/BootloaderProtocol.cpp
+    src/protocol/Pdp.h
+    src/protocol/Pdp.cpp
 
     src/maps/ModuleMaps.h
     src/maps/ModuleMaps.cpp
