@@ -180,7 +180,8 @@ QVector<RegEntry> build12DI()
         e.push_back(T{QStringLiteral("Gateway октет %1").arg(i + 1), quint16(112 + i), RegEntry::Holding, true, nullptr, QStringLiteral("0..255")});
     e.push_back(T{QStringLiteral("Использовать DHCP"), 116, RegEntry::Holding, true, decodeBool01, QStringLiteral("0/1")});
     e.push_back(T{QStringLiteral("Сохранить (trigger)"),      117, RegEntry::Holding, true, nullptr, QStringLiteral("0xA5A5")});
-    e.push_back(T{QStringLiteral("Перезагрузка (trigger)"),   118, RegEntry::Holding, true, nullptr, QStringLiteral("0xB00B / 0xB007")});
+    e.push_back(T{QStringLiteral("Перезагрузка (trigger)"),   118, RegEntry::Holding, true, nullptr, QStringLiteral("0xB00B=reboot 0xB007=bootloader")});
+    e.push_back(T{QStringLiteral("Сброс switch KSZ8863 (trig.)"), 118, RegEntry::Holding, true, nullptr, QStringLiteral("0x8863")});
     e.push_back(T{QStringLiteral("Сброс к заводским (trig.)"), 119, RegEntry::Holding, true, nullptr, QStringLiteral("0xDEAD")});
     e.push_back(T{QStringLiteral("Температура чипа"), 130, RegEntry::Holding, false, decodeDeciCelsius, {}});
 
@@ -228,7 +229,8 @@ QVector<RegEntry> build12DO()
         e.push_back(T{QStringLiteral("Gateway октет %1").arg(i + 1), quint16(112 + i), RegEntry::Holding, true, nullptr, QStringLiteral("0..255")});
     e.push_back(T{QStringLiteral("Использовать DHCP"), 116, RegEntry::Holding, true, decodeBool01, QStringLiteral("0/1")});
     e.push_back(T{QStringLiteral("Сохранить (trigger)"),      117, RegEntry::Holding, true, nullptr, QStringLiteral("0xA5A5")});
-    e.push_back(T{QStringLiteral("Перезагрузка (trigger)"),   118, RegEntry::Holding, true, nullptr, QStringLiteral("0xB00B / 0xB007")});
+    e.push_back(T{QStringLiteral("Перезагрузка (trigger)"),   118, RegEntry::Holding, true, nullptr, QStringLiteral("0xB00B=reboot 0xB007=bootloader")});
+    e.push_back(T{QStringLiteral("Сброс switch KSZ8863 (trig.)"), 118, RegEntry::Holding, true, nullptr, QStringLiteral("0x8863")});
     e.push_back(T{QStringLiteral("Сброс к заводским (trig.)"), 119, RegEntry::Holding, true, nullptr, QStringLiteral("0xDEAD")});
 
     return e;

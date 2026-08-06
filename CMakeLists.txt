@@ -64,8 +64,6 @@ qt_add_executable(module_tool
 
     src/tabs/OnlineTab.h
     src/tabs/OnlineTab.cpp
-    src/tabs/SettingsTab.h
-    src/tabs/SettingsTab.cpp
     src/tabs/FwUpdateTab.h
     src/tabs/FwUpdateTab.cpp
     src/tabs/FwWorker.h

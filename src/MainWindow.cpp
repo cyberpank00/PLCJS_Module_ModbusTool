@@ -5,7 +5,6 @@
 #include "tabs/DiscoveryTab.h"
 #include "tabs/FwUpdateTab.h"
 #include "tabs/OnlineTab.h"
-#include "tabs/SettingsTab.h"
 #include "version.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -16,7 +15,6 @@ MainWindow::MainWindow(QWidget *parent)
     auto *tabs = new QTabWidget;
     tabs->addTab(new DiscoveryTab, QStringLiteral("Обнаружение"));
     tabs->addTab(new OnlineTab, QStringLiteral("Онлайн"));
-    tabs->addTab(new SettingsTab, QStringLiteral("Настройки"));
     tabs->addTab(new FwUpdateTab, QStringLiteral("Обновление FW"));
 
     setCentralWidget(tabs);
