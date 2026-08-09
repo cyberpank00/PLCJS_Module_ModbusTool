@@ -137,7 +137,7 @@ Sibling firmware repos under `E:\STM_Programming\`:
 | `PLCJS_ETH_MODULE_12DI_D4MG_...` | `0x504C1201` | `0x12D1` | `build12DI()` |
 | `PLCJS_ETH_MODULE_12DQ_D4MG_...` | `0x504C1202` | `0x12D0` | `build12DO()` |
 | `PLCJS_ETH_MODULE_4RTD_D4MG_...` | `0x504C0403` | `0x04D1` | `build4RTD()` |
-| `BOOTLOADER_PLCJS_ETH_MODULE_12DI_D4MG_...` | — | — | `BootloaderProtocol.*`, `FwWorker.*` |
+| `BOOTLOADER_PLCJS_ETH_MODULE_STM32F407VGT6` | — | — | `BootloaderProtocol.*`, `FwWorker.*` |
 
 The authoritative definitions live in the firmware repos:
 - Register maps — the header comment of each firmware's
@@ -158,3 +158,25 @@ The three firmware variants are now aligned on shared subsystems, and all of the
 support HR118 `0x8863` (KSZ8863 switch reset). Their register maps still differ
 substantially by function, so do not assume a register exists on every module
 just because one map has it.
+
+## Maintaining this file
+
+`AGENTS.md` is a living document, not a one-time write. Update it **in the same
+commit** as the change it describes — a stale map is worse than no map, because
+it actively misleads. Touch it when:
+
+- a protocol port (`Pdp.cpp`, `BootloaderProtocol.cpp`) changes to match a
+  firmware-side wire-format change;
+- a register map is added or changed in `ModuleMaps.cpp` (mirror of a firmware
+  `modbus_app.h` change);
+- the build procedure, static-Qt line or windres/RC landmine changes;
+- `APP_VERSION_PATCH` / `APP_VERSION_MINOR` is bumped and the version-policy
+  text needs the new example value;
+- a module ID is added or a new `buildXXX()` is introduced;
+- a cross-repo contract changes (PDP wire format, OTA protocol, `fw_header_t`,
+  flash map) — update the *Multi-repo* section here **and** the corresponding
+  section in the sibling repo(s).
+
+Pure refactors with no behavioural change do not require an update, but when in
+doubt, update — the cost is a few lines of text, the cost of a stale invariant
+is a field bug.
