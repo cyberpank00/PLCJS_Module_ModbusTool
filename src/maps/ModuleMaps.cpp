@@ -121,6 +121,17 @@ QString decodeCalRange(quint16 v)
     }
 }
 
+QString decodeSmoothing(quint16 v)
+{
+    switch (v) {
+    case 0: return QStringLiteral("выкл");
+    case 1: return QStringLiteral("слабое (1/4)");
+    case 2: return QStringLiteral("среднее (1/8)");
+    case 3: return QStringLiteral("сильное (1/16)");
+    default: return QStringLiteral("?");
+    }
+}
+
 QString decodeRtdRange(quint16 v)
 {
     return v ? QStringLiteral("high RREF") : QStringLiteral("low RREF");
@@ -291,6 +302,7 @@ QVector<RegEntry> build4RTD()
         e.push_back(T{QStringLiteral("Кан.%1 режим alpha").arg(n),    quint16(b + 2), RegEntry::Holding, true, decodeAlphaMode, QStringLiteral("0/1")});
         e.push_back(T{QStringLiteral("Кан.%1 custom W100 ×10000").arg(n), quint16(b + 3), RegEntry::Holding, true, nullptr, {}});
         e.push_back(T{QStringLiteral("Кан.%1 диапазон (override)").arg(n), quint16(b + 4), RegEntry::Holding, true, decodeCalRange, QStringLiteral("0=auto 1=low 2=high")});
+        e.push_back(T{QStringLiteral("Кан.%1 сглаживание (EMA)").arg(n),   quint16(b + 5), RegEntry::Holding, true, decodeSmoothing, QStringLiteral("0=выкл 1..3")});
     }
 
     // Per-channel calibration coefficients (holding float32, base 540 + ch*8).
