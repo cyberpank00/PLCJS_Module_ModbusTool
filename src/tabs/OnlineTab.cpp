@@ -378,6 +378,12 @@ void OnlineTab::onWrite()
         return;
     }
 
+    // The "save settings" trigger (HR117 = 0xA5A5) must be written LAST, after
+    // every config register, or a save that sits above a config row in the map
+    // would persist the pre-write state and the config change would be lost.
+    constexpr quint16 kSaveTrigAddr = 117;
+    int saveRow = -1;
+
     int written = 0;
     for (int row = 0; row < m_rows.size(); ++row) {
         const Row &info = m_rows.at(row);
@@ -392,6 +398,9 @@ void OnlineTab::onWrite()
         const quint16 addr = info.addrEditable
                                  ? quint16(addrSpin(row)->value())
                                  : info.addr;
+
+        // Defer the save trigger; it is written after the loop.
+        if (addr == kSaveTrigAddr) { saveRow = row; continue; }
 
         if (info.fmt == maps::RegEntry::F32) {
             // Float32 registers: parse a decimal value, write two registers
@@ -426,5 +435,25 @@ void OnlineTab::onWrite()
         }
         ++written;
     }
+
+    // Deferred save trigger, written last so all config writes are persisted.
+    if (saveRow >= 0) {
+        auto *edit = qobject_cast<QLineEdit *>(m_table->cellWidget(saveRow, ColWrite));
+        const QString text = edit ? edit->text().trimmed() : QString();
+        bool ok = false;
+        const uint value = text.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)
+                               ? text.mid(2).toUInt(&ok, 16)
+                               : text.toUInt(&ok, 10);
+        if (!ok || value > 0xFFFF) {
+            setStatus(QStringLiteral("Строка %1: неверное значение '%2'").arg(saveRow + 1).arg(text), true);
+            return;
+        }
+        if (!c.writeSingleRegister(kSaveTrigAddr, quint16(value))) {
+            setStatus(QStringLiteral("Строка %1: %2").arg(saveRow + 1).arg(c.lastError()), true);
+            return;
+        }
+        ++written;
+    }
+
     setStatus(QStringLiteral("Записано регистров: %1").arg(written), false);
 }
