@@ -1,5 +1,6 @@
 #include "OnlineTab.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -10,6 +11,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTableWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <QtGlobal>
@@ -88,10 +90,40 @@ OnlineTab::OnlineTab(QWidget *parent)
     connect(writeBtn, &QPushButton::clicked, this, &OnlineTab::onWrite);
     connect(m_map, &QComboBox::currentIndexChanged, this, &OnlineTab::onMapChanged);
 
+    // ---- Continuous-read controls ---------------------------------------
+    m_continuous = new QCheckBox(QStringLiteral("Непрерывное чтение"));
+    m_period = new QSpinBox;
+    m_period->setRange(50, 60000);
+    m_period->setSingleStep(50);
+    m_period->setValue(500);
+    m_period->setSuffix(QStringLiteral(" мс"));
+    m_timeout = new QSpinBox;
+    m_timeout->setRange(20, 10000);
+    m_timeout->setSingleStep(50);
+    m_timeout->setValue(200);
+    m_timeout->setSuffix(QStringLiteral(" мс"));
+
+    m_pollTimer = new QTimer(this);
+    connect(m_pollTimer, &QTimer::timeout, this, &OnlineTab::onRead);
+    connect(m_continuous, &QCheckBox::toggled, this, [this](bool on) {
+        m_period->setEnabled(!on);
+        if (on) {
+            m_pollTimer->start(m_period->value());
+            onRead(); // immediate first read
+        } else {
+            m_pollTimer->stop();
+        }
+    });
+
     auto *btnRow = new QHBoxLayout;
     btnRow->addWidget(readBtn);
     btnRow->addWidget(writeBtn);
     btnRow->addStretch();
+    btnRow->addWidget(m_continuous);
+    btnRow->addWidget(new QLabel(QStringLiteral("Период:")));
+    btnRow->addWidget(m_period);
+    btnRow->addWidget(new QLabel(QStringLiteral("Таймаут:")));
+    btnRow->addWidget(m_timeout);
 
     m_status = new QLabel(QStringLiteral("Готово"));
 
@@ -265,7 +297,7 @@ void OnlineTab::onRead()
         return;
     }
 
-    ModbusTcpClient c(2500);
+    ModbusTcpClient c(m_timeout->value());
     if (!c.connectToServer(m_ip->text().trimmed(), quint16(m_port->value()),
                            quint8(m_unitId->value()))) {
         setStatus(c.lastError(), true);

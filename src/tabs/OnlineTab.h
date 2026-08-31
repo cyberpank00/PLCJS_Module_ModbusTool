@@ -12,6 +12,8 @@ class QSpinBox;
 class QComboBox;
 class QTableWidget;
 class QLabel;
+class QCheckBox;
+class QTimer;
 QT_END_NAMESPACE
 
 // "Онлайн" tab: register map viewer/editor.
@@ -58,6 +60,12 @@ private:
     QComboBox    *m_base;   // 0 = dec, 1 = hex display
     QTableWidget *m_table;
     QLabel       *m_status;
+
+    // Continuous polling controls (bottom row).
+    QCheckBox    *m_continuous;  // enable periodic re-read
+    QSpinBox     *m_period;      // poll period, ms (default 500)
+    QSpinBox     *m_timeout;     // per-read Modbus timeout, ms (default 200)
+    QTimer       *m_pollTimer;
 
     QVector<Row>  m_rows;
 
