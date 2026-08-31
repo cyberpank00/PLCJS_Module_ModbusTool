@@ -2,6 +2,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QElapsedTimer>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -297,6 +298,9 @@ void OnlineTab::onRead()
         return;
     }
 
+    QElapsedTimer cycle;
+    cycle.start();
+
     ModbusTcpClient c(m_timeout->value());
     if (!c.connectToServer(m_ip->text().trimmed(), quint16(m_port->value()),
                            quint8(m_unitId->value()))) {
@@ -349,7 +353,8 @@ void OnlineTab::onRead()
         }
         ++okCount;
     }
-    setStatus(QStringLiteral("Прочитано %1/%2 регистров").arg(okCount).arg(m_rows.size()),
+    setStatus(QStringLiteral("Прочитано %1/%2 регистров  •  опрос %3 мс")
+                  .arg(okCount).arg(m_rows.size()).arg(cycle.elapsed()),
               okCount != m_rows.size());
 }
 
