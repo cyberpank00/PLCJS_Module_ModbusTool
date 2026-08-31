@@ -56,9 +56,12 @@ OnlineTab::OnlineTab(QWidget *parent)
     m_unitId = new QSpinBox;
     m_unitId->setRange(1, 247);
     m_unitId->setValue(boot::kDefaultUnitId);
-    m_func = new QComboBox;
+    // Kept only for the (now unreachable) free-mode code paths; not shown since
+    // the "Свободная" map was removed.
+    m_func = new QComboBox(this);
     m_func->addItem(QStringLiteral("Input (FC04)"));
     m_func->addItem(QStringLiteral("Holding (FC03)"));
+    m_func->hide();
     m_base = new QComboBox;
     m_base->addItem(QStringLiteral("dec"));
     m_base->addItem(QStringLiteral("hex"));
@@ -69,7 +72,6 @@ OnlineTab::OnlineTab(QWidget *parent)
     connForm->addRow(QStringLiteral("IP:"), m_ip);
     connForm->addRow(QStringLiteral("Порт:"), m_port);
     connForm->addRow(QStringLiteral("Unit ID:"), m_unitId);
-    connForm->addRow(QStringLiteral("Регистры:"), m_func);
     connForm->addRow(QStringLiteral("Формат:"), m_base);
 
     // ---- Register table --------------------------------------------------

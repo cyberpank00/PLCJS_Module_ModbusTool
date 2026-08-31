@@ -328,7 +328,6 @@ QVector<RegEntry> build4RTD()
 QVector<QString> mapNames()
 {
     return {
-        QStringLiteral("Свободная (произвольные адреса)"),
         QStringLiteral("12DI"),
         QStringLiteral("12DO"),
         QStringLiteral("4RTD"),
@@ -338,10 +337,10 @@ QVector<QString> mapNames()
 MapId mapIdForIndex(int index)
 {
     switch (index) {
-    case 1:  return MapId::M12DI;
-    case 2:  return MapId::M12DO;
-    case 3:  return MapId::M4RTD;
-    default: return MapId::Free;
+    case 0:  return MapId::M12DI;
+    case 1:  return MapId::M12DO;
+    case 2:  return MapId::M4RTD;
+    default: return MapId::M12DI;
     }
 }
 
