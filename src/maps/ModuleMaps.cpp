@@ -366,31 +366,22 @@ QVector<RegEntry> build4RTD()
 }
 
 // ---- 8AIC map (8x 4-20 mA, two ADS1220) -------------------------------------
-// Mirrors Application/modbus/modbus_app.h of PLCJS_ETH_MODULE_8AIC (fw 1.x).
+// Mirrors Application/modbus/modbus_app.h of PLCJS_ETH_MODULE_8AIC (fw 1.2+).
 // Multi-channel quantities are grouped by quantity: 8 consecutive registers
 // (or 8 float/int32 pairs) are channels 1..8.
-QString decodeAicCurrent(quint16 v)
+// Reading is scaled onto the channel's [low, high] thresholds (HR 8..23), so
+// only the percent of span can be decoded without knowing them.
+QString decodeAicReading(quint16 v)
 {
     const qint16 s = qint16(v);
     if (s == -32768) return QStringLiteral("FAULT");
-    if (s == 0)      return QStringLiteral("0 (выкл / 0 mA)");
-    return QStringLiteral("%1 mA").arg(double(s) / 32767.0 * 20.0, 0, 'f', 3);
+    if (s == 0)      return QStringLiteral("0 (выкл / нижний порог)");
+    return QStringLiteral("%1 % шкалы").arg(double(s) / 32767.0 * 100.0, 0, 'f', 2);
 }
 
-QString decodeAicPercent(quint16 v)
+QString decodeAicMicroamps(quint16 v)
 {
-    const qint16 s = qint16(v);
-    if (s == -32768) return QStringLiteral("FAULT");
-    return QStringLiteral("%1 %").arg(double(s) / 32767.0 * 100.0, 0, 'f', 2);
-}
-
-QString decodeAicRange(quint16 v)
-{
-    switch (v) {
-    case 0: return QStringLiteral("4–20 mA");
-    case 1: return QStringLiteral("0–20 mA");
-    default: return QStringLiteral("?");
-    }
+    return QStringLiteral("%1 mA").arg(double(v) / 1000.0, 0, 'f', 3);
 }
 
 QString decodeAicRate(quint16 v)
@@ -434,13 +425,13 @@ QVector<RegEntry> build8AIC()
 
     // Compact holding block 0..47: group*8 + ch.
     for (int ch = 0; ch < 8; ++ch)
-        e.push_back(T{QStringLiteral("Кан.%1 ток int16 (0..32767 = 0..20 mA)").arg(ch + 1), quint16(0 + ch), RegEntry::Holding, false, decodeAicCurrent, {}});
+        e.push_back(T{QStringLiteral("Кан.%1 показание int16 (0..32767 = порог↓..порог↑)").arg(ch + 1), quint16(0 + ch), RegEntry::Holding, false, decodeAicReading, {}});
     for (int ch = 0; ch < 8; ++ch)
-        e.push_back(T{QStringLiteral("Кан.%1 процент шкалы int16").arg(ch + 1), quint16(8 + ch), RegEntry::Holding, false, decodeAicPercent, {}});
+        e.push_back(T{QStringLiteral("Кан.%1 нижний порог шкалы, мкА").arg(ch + 1), quint16(8 + ch), RegEntry::Holding, true, decodeAicMicroamps, QStringLiteral("0..25000, < верхнего (деф. 4000)")});
     for (int ch = 0; ch < 8; ++ch)
-        e.push_back(T{QStringLiteral("Кан.%1 включён").arg(ch + 1), quint16(16 + ch), RegEntry::Holding, true, decodeBool01, QStringLiteral("0/1")});
+        e.push_back(T{QStringLiteral("Кан.%1 верхний порог шкалы, мкА").arg(ch + 1), quint16(16 + ch), RegEntry::Holding, true, decodeAicMicroamps, QStringLiteral("..25000, > нижнего (деф. 20000)")});
     for (int ch = 0; ch < 8; ++ch)
-        e.push_back(T{QStringLiteral("Кан.%1 шкала").arg(ch + 1), quint16(24 + ch), RegEntry::Holding, true, decodeAicRange, QStringLiteral("0=4-20 mA 1=0-20 mA")});
+        e.push_back(T{QStringLiteral("Кан.%1 включён").arg(ch + 1), quint16(24 + ch), RegEntry::Holding, true, decodeBool01, QStringLiteral("0/1")});
     for (int ch = 0; ch < 8; ++ch)
         e.push_back(T{QStringLiteral("Кан.%1 сглаживание (EMA)").arg(ch + 1), quint16(32 + ch), RegEntry::Holding, true, decodeSmoothing, QStringLiteral("0=выкл 1..3")});
 
