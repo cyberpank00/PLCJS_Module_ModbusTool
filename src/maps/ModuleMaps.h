@@ -8,9 +8,8 @@
 // Named Modbus register maps ("карты") for the PLCJS ETH I/O modules, used by
 // the Онлайн tab to present labelled rows instead of raw addresses.
 //
-// Only the 12DI map is fully described here (its firmware repo is available and
-// the module is used for live testing). 12DO and 4RTD are declared as stubs and
-// will be filled in later; other variants (4AIU/4AIC/4AO) are not modelled yet.
+// Maps: 12DI, 12DO, 4RTD (HW2.1) and 8AIC. Each mirrors the header comment of
+// modbus_app.h in the corresponding firmware repository.
 namespace maps {
 
 // A single register row in a module map.
@@ -42,7 +41,8 @@ enum class MapId {
     Free,   // arbitrary addresses (classic manual mode)
     M12DI,  // 12x discrete inputs — fully described
     M12DO,  // 12x discrete outputs — stub
-    M4RTD,  // 4x RTD analog inputs — stub
+    M4RTD,  // 4x RTD analog inputs
+    M8AIC,  // 8x 4-20 mA current inputs
 };
 
 // Display names for the "Карта модуля" combo box, index-aligned with allMaps().

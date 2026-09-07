@@ -56,7 +56,7 @@ There are no automated tests. Verification is manual, against a real module.
 | `tabs/OnlineTab.*` | Register browser. "Карта модуля" selector switches between free-address mode and named per-module maps. |
 | `tabs/FwUpdateTab.*` | Firmware-update UI (pick `.bin`, addresses, progress, log). |
 | `tabs/FwWorker.*` | The OTA state machine, run off the GUI thread. |
-| `maps/ModuleMaps.*` | Named register maps — `build12DI()`, `build12DO()`, `build4RTD()`. |
+| `maps/ModuleMaps.*` | Named register maps — `build12DI()`, `build12DO()`, `build4RTD()`, `build8AIC()`. |
 | `protocol/Pdp.*` | PLCJS Discovery Protocol client (UDP/20556 broadcast). |
 | `protocol/BootloaderProtocol.*` | Bootloader OTA register interface. |
 | `modbus/ModbusTcpClient.*` | Minimal Modbus TCP client over `QTcpSocket`. |
@@ -112,7 +112,7 @@ firewall**, or discovery silently returns nothing. This is the single most commo
 plausible-looking garbage rather than an error.
 
 Module IDs decoded in `ModuleMaps.cpp` (IR125): `0x12D1` 12DI, `0x12D0` 12DO,
-`0x04D1` 4RTD, `0x04DD` 4RD. These must match `MODULE_ID_*` in each firmware's
+`0x04D1` 4RTD, `0x08AC` 8AIC, `0x04DD` 4RD. These must match `MODULE_ID_*` in each firmware's
 `modbus_app.h`.
 
 When a firmware's register map changes, the corresponding `buildXXX()` must be
@@ -137,6 +137,7 @@ Sibling firmware repos under `E:\STM_Programming\`:
 | `PLCJS_ETH_MODULE_12DI_D4MG_...` | `0x504C1201` | `0x12D1` | `build12DI()` |
 | `PLCJS_ETH_MODULE_12DQ_D4MG_...` | `0x504C1202` | `0x12D0` | `build12DO()` |
 | `PLCJS_ETH_MODULE_4RTD_D4MG_...` | `0x504C0403` | `0x04D1` | `build4RTD()` |
+| `PLCJS_ETH_MODULE_8AIC_D4MG_...` | `0x504C0804` | `0x08AC` | `build8AIC()` |
 | `BOOTLOADER_PLCJS_ETH_MODULE_STM32F407VGT6` | — | — | `BootloaderProtocol.*`, `FwWorker.*` |
 
 The authoritative definitions live in the firmware repos:

@@ -39,6 +39,7 @@ QString decodeModuleId(quint16 v)
     case 0x12D1: return QStringLiteral("12DI");
     case 0x12D0: return QStringLiteral("12DO");
     case 0x04D1: return QStringLiteral("4RTD");
+    case 0x08AC: return QStringLiteral("8AIC");
     case 0x04DD: return QStringLiteral("4RD");
     default: return QStringLiteral("0x%1").arg(v, 4, 16, QChar('0')).toUpper();
     }
@@ -364,6 +365,138 @@ QVector<RegEntry> build4RTD()
     return e;
 }
 
+// ---- 8AIC map (8x 4-20 mA, two ADS1220) -------------------------------------
+// Mirrors Application/modbus/modbus_app.h of PLCJS_ETH_MODULE_8AIC (fw 1.x).
+// Multi-channel quantities are grouped by quantity: 8 consecutive registers
+// (or 8 float/int32 pairs) are channels 1..8.
+QString decodeAicCurrent(quint16 v)
+{
+    const qint16 s = qint16(v);
+    if (s == -32768) return QStringLiteral("FAULT");
+    if (s == 0)      return QStringLiteral("0 (выкл / 0 mA)");
+    return QStringLiteral("%1 mA").arg(double(s) / 32767.0 * 20.0, 0, 'f', 3);
+}
+
+QString decodeAicPercent(quint16 v)
+{
+    const qint16 s = qint16(v);
+    if (s == -32768) return QStringLiteral("FAULT");
+    return QStringLiteral("%1 %").arg(double(s) / 32767.0 * 100.0, 0, 'f', 2);
+}
+
+QString decodeAicRange(quint16 v)
+{
+    switch (v) {
+    case 0: return QStringLiteral("4–20 mA");
+    case 1: return QStringLiteral("0–20 mA");
+    default: return QStringLiteral("?");
+    }
+}
+
+QString decodeAicRate(quint16 v)
+{
+    switch (v) {
+    case 0: return QStringLiteral("20 SPS + FIR 50/60 Гц");
+    case 1: return QStringLiteral("90 SPS");
+    case 2: return QStringLiteral("330 SPS");
+    default: return QStringLiteral("?");
+    }
+}
+
+QString decodeAicFlags(quint16 v)
+{
+    QStringList parts;
+    if (v & 0x0001u) parts << QStringLiteral("enabled");
+    if (v & 0x0002u) parts << QStringLiteral("valid");
+    if (v & 0x0004u) parts << QStringLiteral("FAULT");
+    switch ((v >> 8) & 0xFFu) {
+    case 0: break;
+    case 1: parts << QStringLiteral("обрыв (< 3.6 mA)"); break;
+    case 2: parts << QStringLiteral("перегрузка (> 21 mA)"); break;
+    case 3: parts << QStringLiteral("АЦП не отвечает"); break;
+    default: parts << QStringLiteral("fault=0x%1").arg((v >> 8) & 0xFFu, 2, 16, QChar('0')).toUpper();
+    }
+    return parts.isEmpty() ? QStringLiteral("—") : parts.join(QStringLiteral(", "));
+}
+
+QString decodeAicCalLock(quint16 v)
+{
+    QStringList locked;
+    for (int ch = 0; ch < 8; ++ch)
+        if ((v >> ch) & 1u) locked << QStringLiteral("CH%1").arg(ch + 1);
+    return locked.isEmpty() ? QStringLiteral("нет") : locked.join(QStringLiteral(" "));
+}
+
+QVector<RegEntry> build8AIC()
+{
+    using T = RegEntry;
+    QVector<RegEntry> e;
+
+    // Compact holding block 0..47: group*8 + ch.
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 ток int16 (0..32767 = 0..20 mA)").arg(ch + 1), quint16(0 + ch), RegEntry::Holding, false, decodeAicCurrent, {}});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 процент шкалы int16").arg(ch + 1), quint16(8 + ch), RegEntry::Holding, false, decodeAicPercent, {}});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 включён").arg(ch + 1), quint16(16 + ch), RegEntry::Holding, true, decodeBool01, QStringLiteral("0/1")});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 шкала").arg(ch + 1), quint16(24 + ch), RegEntry::Holding, true, decodeAicRange, QStringLiteral("0=4-20 mA 1=0-20 mA")});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 сглаживание (EMA)").arg(ch + 1), quint16(32 + ch), RegEntry::Holding, true, decodeSmoothing, QStringLiteral("0=выкл 1..3")});
+
+    // Readings (input registers 300..355), grouped by quantity.
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 ток, mA").arg(ch + 1), quint16(300 + ch * 2), RegEntry::Input, false, nullptr, {}, RegEntry::F32});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 ток сырой, mA").arg(ch + 1), quint16(316 + ch * 2), RegEntry::Input, false, nullptr, {}, RegEntry::F32});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 флаги").arg(ch + 1), quint16(332 + ch), RegEntry::Input, false, decodeAicFlags, {}});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 ADC код (24-bit)").arg(ch + 1), quint16(340 + ch * 2), RegEntry::Input, false, nullptr, {}, RegEntry::I32});
+
+    // Global input registers.
+    e.push_back(T{QStringLiteral("Версия FW (major)"), 120, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Версия FW (minor)"), 121, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Uptime, с (low)"),  122, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Uptime, с (high)"), 123, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Module ID"),        125, RegEntry::Input, false, decodeModuleId, {}});
+    e.push_back(T{QStringLiteral("Температура чипа"),  126, RegEntry::Input, false, decodeDeciCelsius, {}});
+    e.push_back(T{QStringLiteral("Блокировка калибровки"), 127, RegEntry::Input, false, decodeAicCalLock, {}});
+
+    // Global holding registers.
+    e.push_back(T{QStringLiteral("Период опроса, мс"), 100, RegEntry::Holding, true, decodeFilterMs, QStringLiteral("50..5000")});
+    e.push_back(T{QStringLiteral("Режим LED"),         101, RegEntry::Holding, true, decodeLedMode, QStringLiteral("0=OFF 1=ON 2=SM")});
+    e.push_back(T{QStringLiteral("Modbus slave id"),   102, RegEntry::Holding, true, nullptr, QStringLiteral("1..247")});
+    e.push_back(T{QStringLiteral("Modbus TCP порт"),   103, RegEntry::Holding, true, nullptr, QStringLiteral(">0")});
+    for (int i = 0; i < 4; ++i)
+        e.push_back(T{QStringLiteral("IP октет %1").arg(i + 1), quint16(104 + i), RegEntry::Holding, true, nullptr, QStringLiteral("0..255")});
+    for (int i = 0; i < 4; ++i)
+        e.push_back(T{QStringLiteral("Netmask октет %1").arg(i + 1), quint16(108 + i), RegEntry::Holding, true, nullptr, QStringLiteral("0..255")});
+    for (int i = 0; i < 4; ++i)
+        e.push_back(T{QStringLiteral("Gateway октет %1").arg(i + 1), quint16(112 + i), RegEntry::Holding, true, nullptr, QStringLiteral("0..255")});
+    e.push_back(T{QStringLiteral("Сетевой режим"), 116, RegEntry::Holding, true, decodeNetMode, QStringLiteral("0=static 1=DHCP 2=link-local")});
+    e.push_back(T{QStringLiteral("Сохранить (trigger)"),      117, RegEntry::Holding, true, nullptr, QStringLiteral("0xA5A5")});
+    e.push_back(T{QStringLiteral("Сервисные команды (trigger)"), 118, RegEntry::Holding, true, nullptr, QStringLiteral("0xB00B reboot / 0xB007 boot / 0x8863 KSZ reset")});
+    e.push_back(T{QStringLiteral("Сброс к заводским (trig.)"), 119, RegEntry::Holding, true, nullptr, QStringLiteral("0xDEAD")});
+    e.push_back(T{QStringLiteral("Температура чипа (HR)"), 130, RegEntry::Holding, false, decodeDeciCelsius, {}});
+    e.push_back(T{QStringLiteral("Калибровка: COMMIT"), 131, RegEntry::Holding, true, nullptr, QStringLiteral("0xCA00|ch (0..7), НЕОБРАТИМО")});
+    e.push_back(T{QStringLiteral("Калибровка: ERASE ARM"), 132, RegEntry::Holding, true, nullptr, QStringLiteral("0xC1A5")});
+    e.push_back(T{QStringLiteral("Скорость АЦП"), 133, RegEntry::Holding, true, decodeAicRate, QStringLiteral("0=20SPS+FIR 1=90SPS 2=330SPS")});
+
+    // Calibration coefficients (holding float32, base 540 + ch*4).
+    for (int ch = 0; ch < 8; ++ch) {
+        const quint16 b = quint16(540 + ch * 4);
+        e.push_back(T{QStringLiteral("Кан.%1 gain").arg(ch + 1),       quint16(b + 0), RegEntry::Holding, true, nullptr, QStringLiteral("float"), RegEntry::F32});
+        e.push_back(T{QStringLiteral("Кан.%1 offset, mA").arg(ch + 1), quint16(b + 2), RegEntry::Holding, true, nullptr, QStringLiteral("float"), RegEntry::F32});
+    }
+
+    // Nominal shunt / reference (holding float32).
+    e.push_back(T{QStringLiteral("R_shunt ном., Ом"), 620, RegEntry::Holding, true, nullptr, QStringLiteral("float, 89.9"), RegEntry::F32});
+    e.push_back(T{QStringLiteral("V_REF ном., В"),    622, RegEntry::Holding, true, nullptr, QStringLiteral("float, 2.048"), RegEntry::F32});
+
+    return e;
+}
+
 } // namespace
 
 // ---- Public API ------------------------------------------------------------
@@ -373,6 +506,7 @@ QVector<QString> mapNames()
         QStringLiteral("12DI"),
         QStringLiteral("12DO"),
         QStringLiteral("4RTD"),
+        QStringLiteral("8AIC"),
     };
 }
 
@@ -382,6 +516,7 @@ MapId mapIdForIndex(int index)
     case 0:  return MapId::M12DI;
     case 1:  return MapId::M12DO;
     case 2:  return MapId::M4RTD;
+    case 3:  return MapId::M8AIC;
     default: return MapId::M12DI;
     }
 }
@@ -392,6 +527,7 @@ QVector<RegEntry> entriesFor(MapId id)
     case MapId::M12DI: return build12DI();
     case MapId::M12DO: return build12DO();
     case MapId::M4RTD: return build4RTD();
+    case MapId::M8AIC: return build8AIC();
     case MapId::Free:  break;
     }
     return {};

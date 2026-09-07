@@ -8,7 +8,7 @@
  * When bumping a release — change all three defines below. */
 
 #define APP_VERSION_MAJOR  1
-#define APP_VERSION_MINOR  1
+#define APP_VERSION_MINOR  2
 #define APP_VERSION_PATCH  0
 #define APP_VERSION_BUILD  0
 
@@ -19,7 +19,7 @@
  * windres does not reliably expand multi-part macro string literals,
  * so we keep this as a single quoted string. Update it together with
  * the three numeric defines above. */
-#define APP_VERSION_STR  "1.1.0.0"
-#define APP_PRODUCT_VER  "1.01.00"
+#define APP_VERSION_STR  "1.2.0.0"
+#define APP_PRODUCT_VER  "1.02.00"
 
 #endif /* APP_VERSION_H */
