@@ -16,8 +16,8 @@ namespace maps {
 // A single register row in a module map.
 struct RegEntry {
     enum Type { Input, Holding }; // FC04 (read-only) vs FC03/FC06 (read/write)
-    enum Fmt  { U16, F32 };       // 1 register (uint16) vs 2 registers (float32,
-                                  // IEEE-754, HIGH word first)
+    enum Fmt  { U16, F32, I32 };  // 1 register (uint16) vs 2 registers (float32
+                                  // IEEE-754 / signed int32, HIGH word first)
 
     QString name;      // human-readable label shown in the "Имя" column
     quint16 addr;      // Modbus register address
@@ -33,7 +33,7 @@ struct RegEntry {
     // (e.g. accepted range or magic value). May be empty.
     QString writeHint;
 
-    // Value width / interpretation. F32 spans two consecutive registers.
+    // Value width / interpretation. F32 / I32 span two consecutive registers.
     Fmt fmt = U16;
 };
 

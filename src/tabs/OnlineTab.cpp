@@ -236,6 +236,8 @@ void OnlineTab::buildMapRows(const QVector<maps::RegEntry> &entries)
                                                            : QStringLiteral("FC03");
         if (e.fmt == maps::RegEntry::F32)
             typeText += QStringLiteral("·f32");
+        else if (e.fmt == maps::RegEntry::I32)
+            typeText += QStringLiteral("·i32");
         auto *type = new QTableWidgetItem(typeText);
         type->setFlags(type->flags() & ~Qt::ItemIsEditable);
         type->setTextAlignment(Qt::AlignCenter);
@@ -327,7 +329,7 @@ void OnlineTab::onRead()
             m_table->item(row, ColType)->setText(holding ? QStringLiteral("FC03")
                                                           : QStringLiteral("FC04"));
 
-        const quint16 count = (info.fmt == maps::RegEntry::F32) ? 2 : 1;
+        const quint16 count = (info.fmt != maps::RegEntry::U16) ? 2 : 1;
         QVector<quint16> regs;
         const bool ok = holding ? c.readHoldingRegisters(addr, count, regs)
                                 : c.readInputRegisters(addr, count, regs);
@@ -345,6 +347,12 @@ void OnlineTab::onRead()
             m_table->item(row, ColHex)->setText(
                 QStringLiteral("0x%1").arg(bits, 8, 16, QChar('0')).toUpper());
             m_table->item(row, ColDecoded)->setText(QStringLiteral("float32"));
+        } else if (info.fmt == maps::RegEntry::I32) {
+            const quint32 bits = (quint32(regs[0]) << 16) | quint32(regs[1]);
+            m_table->item(row, ColDec)->setText(QString::number(qint32(bits)));
+            m_table->item(row, ColHex)->setText(
+                QStringLiteral("0x%1").arg(bits, 8, 16, QChar('0')).toUpper());
+            m_table->item(row, ColDecoded)->setText(QStringLiteral("int32"));
         } else {
             const quint16 v = regs.first();
             m_table->item(row, ColDec)->setText(QString::number(v));
