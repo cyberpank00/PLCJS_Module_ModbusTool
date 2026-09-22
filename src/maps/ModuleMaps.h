@@ -43,6 +43,7 @@ enum class MapId {
     M12DO,  // 12x discrete outputs — stub
     M4RTD,  // 4x RTD analog inputs
     M8AIC,  // 8x 4-20 mA current inputs
+    M8AOC,  // 8x 0-20 mA current outputs
 };
 
 // Display names for the "Карта модуля" combo box, index-aligned with allMaps().
