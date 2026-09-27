@@ -14,9 +14,20 @@ if(WIN32 AND NOT DEFINED CMAKE_RC_COMPILER)
     endif()
 endif()
 
-project(module_tool VERSION 0.1.0 LANGUAGES CXX RC)
+# Read the tool version from src/app_version.h (single source of truth, see
+# AGENTS.md) so the project version and the release exe name follow it.
+file(STRINGS src/app_version.h _app_ver_lines
+     REGEX "^#define APP_VERSION_(MAJOR|MINOR|PATCH) ")
+foreach(_line IN LISTS _app_ver_lines)
+    if(_line MATCHES "APP_VERSION_([A-Z]+)[ \t]+([0-9]+)")
+        set(APP_VERSION_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
+    endif()
+endforeach()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS src/app_version.h)
 
-set(CMAKE_CXX_STANDARD 17)
+project(module_tool
+    VERSION ${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}
+    LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -72,6 +83,11 @@ qt_add_executable(module_tool
 
 target_include_directories(module_tool PRIVATE src)
 
+# CMake does not scan #include dependencies of .rc files, so a version bump in
+# app_version.h would otherwise leave a stale VERSIONINFO in the exe.
+set_source_files_properties(src/app.rc PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/app_version.h")
+
 target_link_libraries(module_tool PRIVATE Qt6::Widgets Qt6::Network)
 
 # Static single-file build: shrink the exe by letting the linker drop unused
@@ -89,6 +105,11 @@ if(NOT QT6_IS_SHARED_LIBS_BUILD)
         "$<${_size_cfg}:-ffunction-sections;-fdata-sections>")
     target_link_options(module_tool PRIVATE
         "$<${_size_cfg}:-Wl,--gc-sections;-s>")
+
+    # The static exe is the hand-distributed release artefact (tracked in git
+    # under build-static/), so carry the version in its file name.
+    set_target_properties(module_tool PROPERTIES
+        OUTPUT_NAME "module_tool_${PROJECT_VERSION}")
 endif()
 
 # When building against a static Qt, make sure the native Windows style plugin

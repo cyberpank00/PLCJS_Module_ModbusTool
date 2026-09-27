@@ -47,6 +47,28 @@ auto-imports its platform/style plugins.
 
 There are no automated tests. Verification is manual, against a real module.
 
+### Release artefact lives in the repo
+
+The static build output is **committed**:
+`build-static/module_tool_<MAJOR>.<MINOR>.<PATCH>.exe` (e.g.
+`module_tool_1.3.1.exe`). `.gitignore` ignores everything else under `build-*/`
+(CMake cache, ninja files, autogen) and un-ignores only `build-static/*.exe`.
+The file name is derived by CMake from the `APP_VERSION_*` defines in
+`src/app_version.h` (`OUTPUT_NAME`, static build only); do not rename the exe by
+hand. Rebuild and commit the exe together with any source change so the tracked
+binary always matches the tracked sources.
+
+**On a new machine the static toolchain must be recreated first** — the static
+Qt at `D:/qt-static/install-size` is a local artefact, not part of the repo or
+of the Qt installer. Recipe (as of 1.3.1): download
+`qtbase-everywhere-src-6.11.1` from `download.qt.io`, run the `configure` line
+from `README.md` in an out-of-source dir (e.g. `D:/qt-static/build-size`), then
+`cmake --build . --parallel && cmake --install .`. Only qtbase is needed. If the
+paths differ, adjust `CMAKE_PREFIX_PATH` in the `build-static` configure line
+(and the `HINTS` for `llvm-windres` / `upx` in `CMakeLists.txt` if those moved).
+UPX is optional: without it the exe is ~20 MB instead of ~6 MB but otherwise
+identical.
+
 ## Source map (`src/`)
 
 | Path | Responsibility |
@@ -86,6 +108,13 @@ The strings are duplicated deliberately: `windres` does not reliably expand
 multi-part macro string literals, so they cannot be composed from the numeric
 defines. Changing the numbers without the strings produces an `.exe` whose file
 properties disagree with its title bar.
+
+`CMakeLists.txt` parses the numeric defines from this header for
+`project(VERSION)` and for the static exe's file name, so a bump needs no CMake
+edit (the header is in `CMAKE_CONFIGURE_DEPENDS`, so a plain `cmake --build`
+re-configures). Every bump changes the exe name: `git rm` the old
+`build-static/module_tool_<old>.exe` in the same commit, so exactly one exe is
+tracked.
 
 A chronological version-review / changelog file is planned; once it exists, add
 an entry there in the same commit as the bump.

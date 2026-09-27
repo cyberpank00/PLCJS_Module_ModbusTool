@@ -1,5 +1,5 @@
 build/
-build-*/
+build-*/*
 *.user
 *.user.*
 CMakeLists.txt.user*
@@ -9,3 +9,5 @@ compile_commands.json
 *.exe
 *.o
 *.obj
+# Release artefact: the static build's exe is tracked
+!build-static/*.exe
