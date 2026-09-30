@@ -45,8 +45,10 @@ bool ModbusTcpClient::isConnected() const
 
 bool ModbusTcpClient::request(const QByteArray &pdu, QByteArray &respPdu)
 {
+    m_transportError = false;
     if (!isConnected()) {
         m_lastError = QStringLiteral("Нет соединения");
+        m_transportError = true;
         return false;
     }
 
@@ -71,6 +73,7 @@ bool ModbusTcpClient::request(const QByteArray &pdu, QByteArray &respPdu)
 
     if (m_sock->write(frame) != frame.size() || !m_sock->waitForBytesWritten(m_timeoutMs)) {
         m_lastError = QStringLiteral("Ошибка отправки: %1").arg(m_sock->errorString());
+        m_transportError = true;
         return false;
     }
 
@@ -79,6 +82,13 @@ bool ModbusTcpClient::request(const QByteArray &pdu, QByteArray &respPdu)
     QElapsedTimer timer;
     timer.start();
     while (true) {
+        // On a kept-alive connection the reply can land (sub-millisecond) while
+        // waitForBytesWritten() above is still pumping the socket, i.e. before
+        // any waitForReadyRead(): it then sits in the socket buffer and no new
+        // readyRead ever comes. Always drain what is already there first.
+        if (m_sock->bytesAvailable() > 0) {
+            buf.append(m_sock->readAll());
+        }
         if (buf.size() >= 7) {
             const quint8 *b = reinterpret_cast<const quint8 *>(buf.constData());
             const quint16 len = quint16((quint16(b[4]) << 8) | b[5]);
@@ -98,13 +108,15 @@ bool ModbusTcpClient::request(const QByteArray &pdu, QByteArray &respPdu)
         const int remaining = m_timeoutMs - int(timer.elapsed());
         if (remaining <= 0) {
             m_lastError = QStringLiteral("Таймаут ответа (txId=%1)").arg(m_txId);
+            m_transportError = true;
             return false;
         }
         if (!m_sock->waitForReadyRead(remaining)) {
+            if (m_sock->bytesAvailable() > 0) continue;   /* raced with the drain */
             m_lastError = QStringLiteral("Таймаут чтения: %1").arg(m_sock->errorString());
+            m_transportError = true;
             return false;
         }
-        buf.append(m_sock->readAll());
     }
 }
 

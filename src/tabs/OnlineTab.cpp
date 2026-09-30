@@ -352,12 +352,15 @@ void OnlineTab::onRead()
             m_table->item(row, ColDec)->setText(QStringLiteral("ERR"));
             m_table->item(row, ColHex)->setText(QStringLiteral("ERR"));
             m_table->item(row, ColDecoded)->setText(QStringLiteral("—"));
-            if (!c.isConnected()) {
-                // Transport gone (cable, module reboot, eviction): stop this
-                // cycle, drop the connection and let the next cycle reconnect.
-                // Copy the message first: reset() destroys the object behind c.
+            if (!c.isConnected() || c.lastErrorIsTransport()) {
+                // Transport gone (cable, module reboot, eviction) or a request
+                // timed out: a pulled cable leaves the socket "connected", so
+                // grinding through every remaining row would cost rows x timeout
+                // with the GUI frozen. Stop this cycle, drop the connection and
+                // let the next cycle reconnect (which fails fast while the link
+                // is down). Copy the message first: reset() destroys c's object.
                 const QString err = c.lastError();
-                if (persistent) m_pollConn.reset();
+                if (persistent) m_pollConn.reset(); else c.close();
                 setStatus(QStringLiteral("Соединение потеряно — %1").arg(err), true);
                 return;
             }

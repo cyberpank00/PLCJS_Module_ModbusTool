@@ -38,6 +38,12 @@ public:
     bool writeMultipleRegisters(quint16 addr, const QVector<quint16> &values);
 
     QString lastError() const { return m_lastError; }
+    // True when the last failure was the transport (no connection, send error,
+    // timeout) rather than a Modbus exception / malformed reply. A caller that
+    // keeps the connection open should drop and re-establish it in that case:
+    // TCP does not notice a pulled cable by itself, so the socket stays
+    // "connected" while every request times out.
+    bool lastErrorIsTransport() const { return m_transportError; }
 
 private:
     bool readRegisters(quint8 func, quint16 addr, quint16 qty, QVector<quint16> &out);
@@ -49,6 +55,7 @@ private:
     quint16     m_txId;
     int         m_timeoutMs;
     QString     m_lastError;
+    bool        m_transportError = false;
 };
 
 #endif // MODBUSTCPCLIENT_H
