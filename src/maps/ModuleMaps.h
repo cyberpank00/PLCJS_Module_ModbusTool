@@ -12,6 +12,15 @@
 // modbus_app.h in the corresponding firmware repository.
 namespace maps {
 
+// A one-click command for a "magic" holding register: pressing the button
+// writes `value` to the row's register immediately (FC06). `dangerous` asks
+// for confirmation first (factory reset, calibration erase arm).
+struct MagicAction {
+    QString label;      // short button caption, e.g. "REBOOT"
+    quint16 value;      // register value to write
+    bool    dangerous = false;
+};
+
 // A single register row in a module map.
 struct RegEntry {
     enum Type { Input, Holding }; // FC04 (read-only) vs FC03/FC06 (read/write)
@@ -34,6 +43,11 @@ struct RegEntry {
 
     // Value width / interpretation. F32 / I32 span two consecutive registers.
     Fmt fmt = U16;
+
+    // Buttons rendered next to the write field (see MagicAction). Filled by
+    // attachStandardActions() for the family-wide trigger registers; the free
+    // text field stays available for anything not covered.
+    QVector<MagicAction> actions;
 };
 
 // Identifies which map a combo-box entry selects.

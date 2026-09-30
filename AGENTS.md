@@ -147,6 +147,14 @@ Module IDs decoded in `ModuleMaps.cpp` (IR125): `0x12D1` 12DI, `0x12D0` 12DO,
 When a firmware's register map changes, the corresponding `buildXXX()` must be
 updated here or the tool shows stale rows. Nothing detects this automatically.
 
+The family-wide trigger registers (HR117 save, HR118 reboot/boot/KSZ reset,
+HR119 factory reset, HR132 cal-erase arm) get one-click buttons and a
+`0xHEX = dec` hint from `attachStandardActions()` in `ModuleMaps.cpp` — a
+post-pass over every map keyed by address, so a new map gets them for free.
+The write field parses **decimal by default, hex only with a `0x` prefix**;
+that is why every magic hint spells out the decimal value. HR131 (calibration
+COMMIT) deliberately has no button: it needs a slot number and is irreversible.
+
 ## Known stale documentation
 
 Both are cosmetic but will mislead:

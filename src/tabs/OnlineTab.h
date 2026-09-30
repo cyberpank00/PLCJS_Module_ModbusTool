@@ -54,6 +54,8 @@ private:
     void buildFreeRows();
     void buildMapRows(const QVector<maps::RegEntry> &entries);
     QSpinBox *addrSpin(int row) const;
+    QLineEdit *writeEdit(int row) const;
+    void writeMagic(quint16 addr, quint16 value, const QString &label, bool dangerous);
     void setStatus(const QString &text, bool error = false);
 
     QComboBox    *m_map;    // "Карта модуля" preset selector

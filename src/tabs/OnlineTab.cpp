@@ -9,6 +9,8 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
+#include <QToolButton>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QTableWidget>
@@ -212,7 +214,8 @@ void OnlineTab::buildFreeRows()
         }
 
         auto *write = new QLineEdit;
-        write->setPlaceholderText(QStringLiteral("dec/0x.."));
+        write->setPlaceholderText(QStringLiteral("dec или 0x.."));
+        write->setToolTip(QStringLiteral("Десятичное число, либо hex с префиксом 0x"));
         m_table->setCellWidget(row, ColWrite, write);
     }
 }
@@ -260,12 +263,44 @@ void OnlineTab::buildMapRows(const QVector<maps::RegEntry> &entries)
 
         if (e.writable) {
             auto *write = new QLineEdit;
+            write->setObjectName(QStringLiteral("writeEdit"));
             write->setPlaceholderText(e.writeHint.isEmpty()
-                                          ? QStringLiteral("dec/0x..")
+                                          ? QStringLiteral("dec или 0x..")
                                           : e.writeHint);
-            if (!e.writeHint.isEmpty())
-                write->setToolTip(e.writeHint);
-            m_table->setCellWidget(row, ColWrite, write);
+            write->setToolTip(e.writeHint.isEmpty()
+                                  ? QStringLiteral("Десятичное число, либо hex с префиксом 0x")
+                                  : e.writeHint + QStringLiteral("\nВвод: десятичное число, либо hex с префиксом 0x"));
+            if (e.actions.isEmpty()) {
+                m_table->setCellWidget(row, ColWrite, write);
+            } else {
+                // Text field + one small button per magic value. The buttons
+                // write immediately (FC06) and bypass the "Записать" pass.
+                auto *box = new QWidget;
+                auto *lay = new QHBoxLayout(box);
+                lay->setContentsMargins(0, 0, 0, 0);
+                lay->setSpacing(2);
+                lay->addWidget(write, 1);
+                for (const maps::MagicAction &a : e.actions) {
+                    auto *btn = new QToolButton;
+                    btn->setText(a.label);
+                    btn->setAutoRaise(false);
+                    btn->setToolTip(QStringLiteral("HR%1 ← 0x%2 (%3)%4")
+                                        .arg(e.addr)
+                                        .arg(QString::number(a.value, 16).toUpper().rightJustified(4, QChar('0')))
+                                        .arg(a.value)
+                                        .arg(a.dangerous ? QStringLiteral("  — с подтверждением") : QString()));
+                    if (a.dangerous)
+                        btn->setStyleSheet(QStringLiteral("QToolButton{color:#b00020;font-weight:bold;}"));
+                    const quint16 addr = e.addr, value = a.value;
+                    const QString label = a.label;
+                    const bool dangerous = a.dangerous;
+                    connect(btn, &QToolButton::clicked, this, [this, addr, value, label, dangerous]() {
+                        writeMagic(addr, value, label, dangerous);
+                    });
+                    lay->addWidget(btn);
+                }
+                m_table->setCellWidget(row, ColWrite, box);
+            }
         } else {
             auto *ro = new QTableWidgetItem(QStringLiteral("—"));
             ro->setFlags(ro->flags() & ~Qt::ItemIsEditable);
@@ -286,6 +321,52 @@ void OnlineTab::onMapChanged(int)
 QSpinBox *OnlineTab::addrSpin(int row) const
 {
     return qobject_cast<QSpinBox *>(m_table->cellWidget(row, ColAddr));
+}
+
+// The write cell is either the QLineEdit itself or a container holding it
+// plus the magic buttons.
+QLineEdit *OnlineTab::writeEdit(int row) const
+{
+    QWidget *w = m_table->cellWidget(row, ColWrite);
+    if (!w) return nullptr;
+    if (auto *e = qobject_cast<QLineEdit *>(w)) return e;
+    return w->findChild<QLineEdit *>(QStringLiteral("writeEdit"));
+}
+
+void OnlineTab::writeMagic(quint16 addr, quint16 value, const QString &label, bool dangerous)
+{
+    if (dangerous) {
+        const auto r = QMessageBox::warning(
+            this, QStringLiteral("Подтверждение"),
+            QStringLiteral("Записать 0x%1 (%2) в HR%3 — %4?\nДействие необратимо / сбрасывает состояние модуля.")
+                .arg(QString::number(value, 16).toUpper().rightJustified(4, QChar('0')))
+                .arg(value).arg(addr).arg(label),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (r != QMessageBox::Yes) return;
+    }
+
+    // Reuse the continuous-read connection when it is open, otherwise a
+    // throwaway one — same policy as the "Записать" button.
+    std::unique_ptr<ModbusTcpClient> oneShot;
+    ModbusTcpClient *c = (m_continuous->isChecked() && m_pollConn && m_pollConn->isConnected())
+                             ? m_pollConn.get() : nullptr;
+    if (!c) {
+        oneShot = std::make_unique<ModbusTcpClient>(2500);
+        if (!oneShot->connectToServer(m_ip->text().trimmed(), quint16(m_port->value()),
+                                      quint8(m_unitId->value()))) {
+            setStatus(oneShot->lastError(), true);
+            return;
+        }
+        c = oneShot.get();
+    }
+    if (!c->writeSingleRegister(addr, value)) {
+        setStatus(QStringLiteral("%1: %2").arg(label).arg(c->lastError()), true);
+        return;
+    }
+    setStatus(QStringLiteral("%1: HR%2 ← 0x%3 (%4) записано")
+                  .arg(label).arg(addr)
+                  .arg(QString::number(value, 16).toUpper().rightJustified(4, QChar('0')))
+                  .arg(value), false);
 }
 
 void OnlineTab::setStatus(const QString &text, bool error)
@@ -426,7 +507,7 @@ void OnlineTab::onWrite()
         const Row &info = m_rows.at(row);
         if (!info.writable)
             continue;
-        auto *edit = qobject_cast<QLineEdit *>(m_table->cellWidget(row, ColWrite));
+        auto *edit = writeEdit(row);
         if (!edit)
             continue;
         const QString text = edit->text().trimmed();
@@ -475,7 +556,7 @@ void OnlineTab::onWrite()
 
     // Deferred save trigger, written last so all config writes are persisted.
     if (saveRow >= 0) {
-        auto *edit = qobject_cast<QLineEdit *>(m_table->cellWidget(saveRow, ColWrite));
+        auto *edit = writeEdit(saveRow);
         const QString text = edit ? edit->text().trimmed() : QString();
         bool ok = false;
         const uint value = text.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)

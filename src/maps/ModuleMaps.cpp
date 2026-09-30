@@ -348,7 +348,7 @@ QVector<RegEntry> build4RTD()
     e.push_back(T{QStringLiteral("Сервисные команды (trigger)"), 118, RegEntry::Holding, true, nullptr, QStringLiteral("0xB00B reboot / 0xB007 boot / 0x8863 KSZ reset")});
     e.push_back(T{QStringLiteral("Сброс к заводским (trig.)"), 119, RegEntry::Holding, true, nullptr, QStringLiteral("0xDEAD")});
     e.push_back(T{QStringLiteral("Температура чипа (HR)"), 130, RegEntry::Holding, false, decodeDeciCelsius, {}});
-    e.push_back(T{QStringLiteral("Калибровка: COMMIT"), 131, RegEntry::Holding, true, nullptr, QStringLiteral("0xCA00|slot, slot=ch*5+class (0..19), НЕОБРАТИМО")});
+    e.push_back(T{QStringLiteral("Калибровка: COMMIT"), 131, RegEntry::Holding, true, nullptr, QStringLiteral("0xCA00|slot = 51712+slot, slot=ch*5+class (0..19), НЕОБРАТИМО")});
     e.push_back(T{QStringLiteral("Калибровка: ERASE ARM"), 132, RegEntry::Holding, true, nullptr, QStringLiteral("0xC1A5")});
 
     // Calibration coefficients (holding float32, base 540 + ch*20 + class*4).
@@ -471,7 +471,7 @@ QVector<RegEntry> build8AIC()
     e.push_back(T{QStringLiteral("Сервисные команды (trigger)"), 118, RegEntry::Holding, true, nullptr, QStringLiteral("0xB00B reboot / 0xB007 boot / 0x8863 KSZ reset")});
     e.push_back(T{QStringLiteral("Сброс к заводским (trig.)"), 119, RegEntry::Holding, true, nullptr, QStringLiteral("0xDEAD")});
     e.push_back(T{QStringLiteral("Температура чипа (HR)"), 130, RegEntry::Holding, false, decodeDeciCelsius, {}});
-    e.push_back(T{QStringLiteral("Калибровка: COMMIT"), 131, RegEntry::Holding, true, nullptr, QStringLiteral("0xCA00|ch (0..7), НЕОБРАТИМО")});
+    e.push_back(T{QStringLiteral("Калибровка: COMMIT"), 131, RegEntry::Holding, true, nullptr, QStringLiteral("0xCA00|ch = 51712+ch (0..7), НЕОБРАТИМО")});
     e.push_back(T{QStringLiteral("Калибровка: ERASE ARM"), 132, RegEntry::Holding, true, nullptr, QStringLiteral("0xC1A5")});
     e.push_back(T{QStringLiteral("Скорость АЦП"), 133, RegEntry::Holding, true, decodeAicRate, QStringLiteral("0=20SPS+FIR 1=90SPS 2=330SPS")});
 
@@ -586,7 +586,7 @@ QVector<RegEntry> build8AOC()
     e.push_back(T{QStringLiteral("Сервисные команды (trigger)"), 118, RegEntry::Holding, true, nullptr, QStringLiteral("0xB00B reboot / 0xB007 boot / 0x8863 KSZ / 0xA0FF analog power-cycle")});
     e.push_back(T{QStringLiteral("Сброс к заводским (trig.)"), 119, RegEntry::Holding, true, nullptr, QStringLiteral("0xDEAD")});
     e.push_back(T{QStringLiteral("Температура чипа (HR)"), 130, RegEntry::Holding, false, decodeDeciCelsius, {}});
-    e.push_back(T{QStringLiteral("Калибровка: COMMIT"), 131, RegEntry::Holding, true, nullptr, QStringLiteral("0xCA00|ch (0..7), НЕОБРАТИМО")});
+    e.push_back(T{QStringLiteral("Калибровка: COMMIT"), 131, RegEntry::Holding, true, nullptr, QStringLiteral("0xCA00|ch = 51712+ch (0..7), НЕОБРАТИМО")});
     e.push_back(T{QStringLiteral("Калибровка: ERASE ARM"), 132, RegEntry::Holding, true, nullptr, QStringLiteral("0xC1A5")});
     e.push_back(T{QStringLiteral("Период опроса EF, мс"), 133, RegEntry::Holding, true, decodeFilterMs, QStringLiteral("20..5000")});
 
@@ -630,17 +630,76 @@ MapId mapIdForIndex(int index)
     }
 }
 
+namespace {
+
+// The write field parses decimal by default and hex only with a "0x" prefix,
+// so every magic hint carries both spellings.
+QString magicHint(std::initializer_list<std::pair<quint16, const char *>> items)
+{
+    QStringList parts;
+    for (const auto &it : items)
+        parts << QStringLiteral("0x%1 = %2 %3")
+                     .arg(QString::number(it.first, 16).toUpper().rightJustified(4, QChar('0')))
+                     .arg(it.first)
+                     .arg(QString::fromUtf8(it.second));
+    return parts.join(QStringLiteral("  |  "));
+}
+
+// Family-wide trigger registers (HR117/118/119/132) get one-click buttons and
+// a dec+hex hint. Module-specific extras (8AOC analog power-cycle) are added
+// by the caller. Calibration COMMIT (HR131) deliberately gets no button: it
+// needs a slot number and is irreversible.
+void attachStandardActions(QVector<RegEntry> &e, bool analogPowerCycle)
+{
+    for (RegEntry &r : e) {
+        if (r.type != RegEntry::Holding || !r.writable) continue;
+        switch (r.addr) {
+        case 117:
+            r.actions = { {QStringLiteral("SAVE"), 0xA5A5} };
+            r.writeHint = magicHint({{0xA5A5, "сохранить настройки"}});
+            break;
+        case 118:
+            r.actions = { {QStringLiteral("REBOOT"), 0xB00B},
+                          {QStringLiteral("BOOT"), 0xB007},
+                          {QStringLiteral("KSZ RST"), 0x8863} };
+            if (analogPowerCycle) {
+                r.actions.push_back({QStringLiteral("PWR CYCLE"), 0xA0FF});
+                r.writeHint = magicHint({{0xB00B, "reboot"}, {0xB007, "bootloader"},
+                                         {0x8863, "KSZ8863 reset"}, {0xA0FF, "analog power-cycle"}});
+            } else {
+                r.writeHint = magicHint({{0xB00B, "reboot"}, {0xB007, "bootloader"},
+                                         {0x8863, "KSZ8863 reset"}});
+            }
+            break;
+        case 119:
+            r.actions = { {QStringLiteral("FACTORY"), 0xDEAD, true} };
+            r.writeHint = magicHint({{0xDEAD, "сброс к заводским"}});
+            break;
+        case 132:
+            r.actions = { {QStringLiteral("ARM ERASE"), 0xC1A5, true} };
+            r.writeHint = magicHint({{0xC1A5, "взвести стирание калибровки (затем кнопка на модуле)"}});
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+} // namespace
+
 QVector<RegEntry> entriesFor(MapId id)
 {
+    QVector<RegEntry> e;
     switch (id) {
-    case MapId::M12DI: return build12DI();
-    case MapId::M12DO: return build12DO();
-    case MapId::M4RTD: return build4RTD();
-    case MapId::M8AIC: return build8AIC();
-    case MapId::M8AOC: return build8AOC();
-    case MapId::Free:  break;
+    case MapId::M12DI: e = build12DI(); break;
+    case MapId::M12DO: e = build12DO(); break;
+    case MapId::M4RTD: e = build4RTD(); break;
+    case MapId::M8AIC: e = build8AIC(); break;
+    case MapId::M8AOC: e = build8AOC(); break;
+    case MapId::Free:  return {};
     }
-    return {};
+    attachStandardActions(e, id == MapId::M8AOC);
+    return e;
 }
 
 bool isStub(MapId)
