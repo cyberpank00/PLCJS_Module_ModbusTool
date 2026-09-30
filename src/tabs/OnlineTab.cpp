@@ -42,6 +42,8 @@ void floatToRegs(float f, quint16 &hi, quint16 &lo)
 }
 } // namespace
 
+OnlineTab::~OnlineTab() = default;
+
 OnlineTab::OnlineTab(QWidget *parent)
     : QWidget(parent)
 {
@@ -115,6 +117,7 @@ OnlineTab::OnlineTab(QWidget *parent)
             onRead(); // immediate first read
         } else {
             m_pollTimer->stop();
+            m_pollConn.reset();   // release the module's client slot
         }
     });
 
@@ -305,8 +308,20 @@ void OnlineTab::onRead()
     QElapsedTimer cycle;
     cycle.start();
 
-    ModbusTcpClient c(m_timeout->value());
-    if (!c.connectToServer(m_ip->text().trimmed(), quint16(m_port->value()),
+    // Continuous mode reuses one connection across cycles; a single read gets
+    // a throwaway one that closes when this function returns.
+    const bool persistent = m_continuous->isChecked();
+    std::unique_ptr<ModbusTcpClient> oneShot;
+    if (!persistent) {
+        oneShot = std::make_unique<ModbusTcpClient>(m_timeout->value());
+    } else if (!m_pollConn) {
+        m_pollConn = std::make_unique<ModbusTcpClient>(m_timeout->value());
+    }
+    ModbusTcpClient &c = persistent ? *m_pollConn : *oneShot;
+    c.setTimeout(m_timeout->value());
+
+    if (!c.isConnected() &&
+        !c.connectToServer(m_ip->text().trimmed(), quint16(m_port->value()),
                            quint8(m_unitId->value()))) {
         setStatus(c.lastError(), true);
         return;
@@ -337,6 +352,13 @@ void OnlineTab::onRead()
             m_table->item(row, ColDec)->setText(QStringLiteral("ERR"));
             m_table->item(row, ColHex)->setText(QStringLiteral("ERR"));
             m_table->item(row, ColDecoded)->setText(QStringLiteral("—"));
+            if (!c.isConnected()) {
+                // Transport gone (cable, module reboot, eviction): stop this
+                // cycle, drop the connection and let the next cycle reconnect.
+                if (persistent) m_pollConn.reset();
+                setStatus(QStringLiteral("Соединение потеряно — %1").arg(c.lastError()), true);
+                return;
+            }
             continue;
         }
         if (info.fmt == maps::RegEntry::F32) {

@@ -3,8 +3,11 @@
 
 #include <QVector>
 #include <QWidget>
+#include <memory>
 
 #include "maps/ModuleMaps.h"
+
+class ModbusTcpClient;
 
 QT_BEGIN_NAMESPACE
 class QLineEdit;
@@ -27,6 +30,7 @@ class OnlineTab : public QWidget
     Q_OBJECT
 public:
     explicit OnlineTab(QWidget *parent = nullptr);
+    ~OnlineTab() override;   // out of line: m_pollConn holds an incomplete type here
 
     static constexpr int kFreeRowCount = 16;
 
@@ -66,6 +70,14 @@ private:
     QSpinBox     *m_period;      // poll period, ms (default 500)
     QSpinBox     *m_timeout;     // per-read Modbus timeout, ms (default 200)
     QTimer       *m_pollTimer;
+
+    // One TCP connection kept open for the whole continuous-read session, so
+    // the module sees a single polling client (its STAT_LED "polling" pattern
+    // and client-slot accounting depend on that) instead of a connect/close
+    // storm every period. Reconnected transparently after a transport error;
+    // dropped when the checkbox is cleared. Single reads use a throwaway
+    // connection as before.
+    std::unique_ptr<ModbusTcpClient> m_pollConn;
 
     QVector<Row>  m_rows;
 
