@@ -355,8 +355,10 @@ void OnlineTab::onRead()
             if (!c.isConnected()) {
                 // Transport gone (cable, module reboot, eviction): stop this
                 // cycle, drop the connection and let the next cycle reconnect.
+                // Copy the message first: reset() destroys the object behind c.
+                const QString err = c.lastError();
                 if (persistent) m_pollConn.reset();
-                setStatus(QStringLiteral("Соединение потеряно — %1").arg(c.lastError()), true);
+                setStatus(QStringLiteral("Соединение потеряно — %1").arg(err), true);
                 return;
             }
             continue;
