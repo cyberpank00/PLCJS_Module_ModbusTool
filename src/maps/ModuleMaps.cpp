@@ -119,6 +119,41 @@ QString decodeRtdType(quint16 v)
     return QStringLiteral("?");
 }
 
+// Full list for the write-field tooltip. First line = short placeholder; the
+// rest is shown only in the tooltip (OnlineTab splits at the first '\n').
+// Mirrors rtd_scales.h: code — name — material / standard — R0 — gain class.
+QString rtdTypeHint()
+{
+    return QStringLiteral(
+        "0..20 — код типа датчика (подробно: наведите курсор)\n"
+        "Код  Тип        Материал / стандарт        R0      Класс усиления\n"
+        " 0   50М        медь, ГОСТ 6651 (W100=1.428)   50 Ω    0 (PGA 16)\n"
+        " 1   Cu50       медь, W100=1.426               50 Ω    0\n"
+        " 2   50П        платина, ГОСТ (W100=1.391)     50 Ω    0\n"
+        " 3   Pt50       платина, IEC 60751 (1.385)     50 Ω    0\n"
+        " 4   Ni100      никель, DIN 43760              100 Ω   1 (PGA 8)\n"
+        " 5   100М       медь, ГОСТ 6651                100 Ω   1\n"
+        " 6   Cu100      медь, W100=1.426               100 Ω   1\n"
+        " 7   100П       платина, ГОСТ                  100 Ω   1\n"
+        " 8   Pt100      платина, IEC 60751             100 Ω   1\n"
+        " 9   Ni500      никель, DIN 43760              500 Ω   2 (PGA 2)\n"
+        "10   500М       медь, ГОСТ 6651                500 Ω   2\n"
+        "11   Cu500      медь, W100=1.426               500 Ω   2\n"
+        "12   500П       платина, ГОСТ                  500 Ω   2\n"
+        "13   Pt500      платина, IEC 60751             500 Ω   2\n"
+        "14   Ni1000     никель, DIN 43760              1000 Ω  3 (PGA 1)\n"
+        "15   1000М      медь, ГОСТ 6651                1000 Ω  3\n"
+        "16   Cu1000     медь, W100=1.426               1000 Ω  3\n"
+        "17   1000П      платина, ГОСТ                  1000 Ω  3\n"
+        "18   Pt1000     платина, IEC 60751             1000 Ω  3\n"
+        "19   R 0..200Ω  сопротивление, 0..32767 = 0..200 Ω   —   1 (PGA 8)\n"
+        "20   R 0..2kΩ   сопротивление, 0..32767 = 0..2000 Ω  —   4 (PGA 1)\n"
+        "\n"
+        "Смена типа меняет класс усиления → канал ~0.75 с не valid; калибровка\n"
+        "хранится отдельно для каждого класса. Запись применяется сразу,\n"
+        "сохраняется кнопкой SAVE (HR117).");
+}
+
 // Compact-block reading (HR 0..3): int16, °C×100 for RTD types or 0..32767
 // of the resistance-mode full scale; 0 = disabled, -32768 = fault.
 QString decodeRtdReading(quint16 v)
@@ -296,7 +331,7 @@ QVector<RegEntry> build4RTD()
     for (int ch = 0; ch < 4; ++ch)
         e.push_back(T{QStringLiteral("Кан.%1 показание int16").arg(ch + 1), quint16(0 + ch), RegEntry::Holding, false, decodeRtdReading, {}});
     for (int ch = 0; ch < 4; ++ch)
-        e.push_back(T{QStringLiteral("Кан.%1 тип датчика").arg(ch + 1), quint16(4 + ch), RegEntry::Holding, true, decodeRtdType, QStringLiteral("0..20 (19=R200, 20=R2k)")});
+        e.push_back(T{QStringLiteral("Кан.%1 тип датчика").arg(ch + 1), quint16(4 + ch), RegEntry::Holding, true, decodeRtdType, rtdTypeHint()});
     for (int ch = 0; ch < 4; ++ch)
         e.push_back(T{QStringLiteral("Кан.%1 включён").arg(ch + 1), quint16(8 + ch), RegEntry::Holding, true, decodeBool01, QStringLiteral("0/1")});
     for (int ch = 0; ch < 4; ++ch)

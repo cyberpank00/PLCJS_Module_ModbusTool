@@ -270,12 +270,16 @@ void OnlineTab::buildMapRows(const QVector<maps::RegEntry> &entries)
         if (e.writable) {
             auto *write = new QLineEdit;
             write->setObjectName(QStringLiteral("writeEdit"));
-            write->setPlaceholderText(e.writeHint.isEmpty()
-                                          ? QStringLiteral("dec или 0x..")
-                                          : e.writeHint);
-            write->setToolTip(e.writeHint.isEmpty()
-                                  ? QStringLiteral("Десятичное число, либо hex с префиксом 0x")
-                                  : e.writeHint + QStringLiteral("\nВвод: десятичное число, либо hex с префиксом 0x"));
+            // Multi-line hints: first line is the placeholder, the full text the tooltip.
+            const QString shortHint = e.writeHint.section(QLatin1Char('\n'), 0, 0);
+            write->setPlaceholderText(shortHint.isEmpty() ? QStringLiteral("dec или 0x..") : shortHint);
+            // Rich-text <pre> keeps the column alignment of table-like hints
+            // (sensor type list); Qt renders tooltips as HTML when they start with '<'.
+            const QString tip = e.writeHint.isEmpty()
+                                    ? QStringLiteral("Десятичное число, либо hex с префиксом 0x")
+                                    : e.writeHint + QStringLiteral("\nВвод: десятичное число, либо hex с префиксом 0x");
+            write->setToolTip(QStringLiteral("<pre style='font-family:Consolas,monospace;margin:0'>%1</pre>")
+                                  .arg(tip.toHtmlEscaped()));
             if (e.actions.isEmpty()) {
                 m_table->setCellWidget(row, ColWrite, write);
             } else {
