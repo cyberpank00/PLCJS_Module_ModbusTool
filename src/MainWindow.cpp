@@ -18,5 +18,5 @@ MainWindow::MainWindow(QWidget *parent)
     tabs->addTab(new FwUpdateTab, QStringLiteral("Обновление FW"));
 
     setCentralWidget(tabs);
-    resize(900, 600);
+    resize(1200, 800);
 }
