@@ -88,7 +88,11 @@ OnlineTab::OnlineTab(QWidget *parent)
     auto *hh = m_table->horizontalHeader();
     hh->setSectionResizeMode(ColName, QHeaderView::Stretch);
     hh->setSectionResizeMode(ColDecoded, QHeaderView::Stretch);
-    hh->setSectionResizeMode(ColWrite, QHeaderView::Stretch);
+    // "Запись" has a fixed width: the text field plus up to four magic
+    // buttons (REBOOT / BOOT / KSZ RST / PWR CYCLE) must never be squeezed by
+    // the stretch columns when the window is narrow.
+    hh->setSectionResizeMode(ColWrite, QHeaderView::Fixed);
+    hh->resizeSection(ColWrite, 420);
 
     // ---- Buttons + status ------------------------------------------------
     auto *readBtn = new QPushButton(QStringLiteral("Читать"));
