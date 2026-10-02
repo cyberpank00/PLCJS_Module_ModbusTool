@@ -3,6 +3,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -41,6 +42,16 @@ void floatToRegs(float f, quint16 &hi, quint16 &lo)
     std::memcpy(&bits, &f, sizeof(bits));
     hi = quint16((bits >> 16) & 0xFFFF);
     lo = quint16(bits & 0xFFFF);
+}
+
+constexpr quint16 kSaveTrigAddr  = 117;
+constexpr quint16 kSaveTrigValue = 0xA5A5;
+
+// Action registers (save/reboot/boot/factory/KSZ reset/calibration commit and
+// erase arm) are write-only triggers: they never read back as written.
+bool isTriggerAddr(quint16 a)
+{
+    return (a >= 117 && a <= 119) || a == 131 || a == 132;
 }
 } // namespace
 
@@ -139,6 +150,20 @@ OnlineTab::OnlineTab(QWidget *parent)
     btnRow->addWidget(new QLabel(QStringLiteral("Таймаут:")));
     btnRow->addWidget(m_timeout);
 
+    // Write/save results get their own label right of the poll controls: the
+    // status line below is overwritten by every poll cycle, so a result shown
+    // there vanishes before it can be read. Cleared automatically after 5 s.
+    m_notice = new QLabel;
+    m_notice->setWordWrap(true);
+    m_notice->setFixedWidth(340);
+    btnRow->addWidget(m_notice);
+    m_noticeTimer = new QTimer(this);
+    m_noticeTimer->setSingleShot(true);
+    connect(m_noticeTimer, &QTimer::timeout, this, [this]() {
+        m_notice->clear();
+        m_notice->setToolTip(QString());
+    });
+
     m_status = new QLabel(QStringLiteral("Готово"));
 
     auto *right = new QVBoxLayout;
@@ -183,7 +208,8 @@ void OnlineTab::rebuildTable()
         return;
     }
     buildMapRows(entries);
-    setStatus(QStringLiteral("Карта 12DI загружена (%1 регистров)").arg(entries.size()));
+    setStatus(QStringLiteral("Карта %1 загружена (%2 регистров)")
+                  .arg(m_map->currentText()).arg(entries.size()));
 }
 
 void OnlineTab::buildFreeRows()
@@ -364,19 +390,48 @@ void OnlineTab::writeMagic(quint16 addr, quint16 value, const QString &label, bo
         oneShot = std::make_unique<ModbusTcpClient>(2500);
         if (!oneShot->connectToServer(m_ip->text().trimmed(), quint16(m_port->value()),
                                       quint8(m_unitId->value()))) {
-            setStatus(oneShot->lastError(), true);
+            setNotice(oneShot->lastError(), true);
             return;
         }
         c = oneShot.get();
     }
+    const bool isSave = (addr == kSaveTrigAddr && value == kSaveTrigValue);
+    QVector<RegExpect> snapshot;
+    if (isSave) {
+        // Remember the live config so it can be compared after the save.
+        for (const Row &r : std::as_const(m_rows)) {
+            if (!r.writable || r.addrEditable || isTriggerAddr(r.addr)) continue;
+            RegExpect e;
+            e.addr = r.addr;
+            QVector<quint16> got;
+            if (c->readHoldingRegisters(r.addr, r.fmt == maps::RegEntry::F32 ? 2 : 1, got)) {
+                e.words = got;
+                snapshot.push_back(e);
+            }
+        }
+    }
     if (!c->writeSingleRegister(addr, value)) {
-        setStatus(QStringLiteral("%1: %2").arg(label).arg(c->lastError()), true);
+        setNotice(QStringLiteral("%1: %2").arg(label).arg(c->lastError()), true);
         return;
     }
-    setStatus(QStringLiteral("%1: HR%2 ← 0x%3 (%4) записано")
+    if (isSave) {
+        oneShot.reset();
+        verifySave(snapshot);
+        return;
+    }
+    setNotice(QStringLiteral("%1: HR%2 ← 0x%3 (%4) записано")
                   .arg(label).arg(addr)
                   .arg(QString::number(value, 16).toUpper().rightJustified(4, QChar('0')))
                   .arg(value), false);
+}
+
+void OnlineTab::setNotice(const QString &text, bool error)
+{
+    m_notice->setText(text);
+    m_notice->setToolTip(text);
+    m_notice->setStyleSheet(error ? QStringLiteral("color:#b00020;font-weight:bold;")
+                                  : QStringLiteral("color:#006400;font-weight:bold;"));
+    m_noticeTimer->start(5000);
 }
 
 void OnlineTab::setStatus(const QString &text, bool error)
@@ -489,29 +544,29 @@ void OnlineTab::onRead()
 void OnlineTab::onWrite()
 {
     if (m_rows.isEmpty()) {
-        setStatus(QStringLiteral("Нет регистров для записи"), true);
+        setNotice(QStringLiteral("Нет регистров для записи"), true);
         return;
     }
 
     const maps::MapId id = maps::mapIdForIndex(m_map->currentIndex());
     if (id == maps::MapId::Free && m_func->currentIndex() != 1) {
-        setStatus(QStringLiteral("Запись возможна только для Holding (FC03/06)"), true);
+        setNotice(QStringLiteral("Запись возможна только для Holding (FC03/06)"), true);
         return;
     }
 
     ModbusTcpClient c(2500);
     if (!c.connectToServer(m_ip->text().trimmed(), quint16(m_port->value()),
                            quint8(m_unitId->value()))) {
-        setStatus(c.lastError(), true);
+        setNotice(c.lastError(), true);
         return;
     }
 
     // The "save settings" trigger (HR117 = 0xA5A5) must be written LAST, after
     // every config register, or a save that sits above a config row in the map
     // would persist the pre-write state and the config change would be lost.
-    constexpr quint16 kSaveTrigAddr = 117;
     int saveRow = -1;
 
+    QVector<RegExpect> expect;
     int written = 0;
     for (int row = 0; row < m_rows.size(); ++row) {
         const Row &info = m_rows.at(row);
@@ -536,16 +591,17 @@ void OnlineTab::onWrite()
             bool okf = false;
             const float f = text.toFloat(&okf);
             if (!okf) {
-                setStatus(QStringLiteral("Строка %1: неверное float-значение '%2'").arg(row + 1).arg(text), true);
+                setNotice(QStringLiteral("Строка %1: неверное float-значение '%2'").arg(row + 1).arg(text), true);
                 return;
             }
             quint16 hi = 0, lo = 0;
             floatToRegs(f, hi, lo);
             if (!c.writeMultipleRegisters(addr, {hi, lo})) {
-                setStatus(QStringLiteral("Строка %1: %2").arg(row + 1).arg(c.lastError()), true);
+                setNotice(QStringLiteral("Строка %1: %2").arg(row + 1).arg(c.lastError()), true);
                 return;
             }
             ++written;
+            if (!isTriggerAddr(addr)) expect.push_back({addr, {hi, lo}});
             continue;
         }
 
@@ -554,14 +610,15 @@ void OnlineTab::onWrite()
                                ? text.mid(2).toUInt(&ok, 16)
                                : text.toUInt(&ok, 10);
         if (!ok || value > 0xFFFF) {
-            setStatus(QStringLiteral("Строка %1: неверное значение '%2'").arg(row + 1).arg(text), true);
+            setNotice(QStringLiteral("Строка %1: неверное значение '%2'").arg(row + 1).arg(text), true);
             return;
         }
         if (!c.writeSingleRegister(addr, quint16(value))) {
-            setStatus(QStringLiteral("Строка %1: %2").arg(row + 1).arg(c.lastError()), true);
+            setNotice(QStringLiteral("Строка %1: %2").arg(row + 1).arg(c.lastError()), true);
             return;
         }
         ++written;
+        if (!isTriggerAddr(addr)) expect.push_back({addr, {quint16(value)}});
     }
 
     // Deferred save trigger, written last so all config writes are persisted.
@@ -573,15 +630,67 @@ void OnlineTab::onWrite()
                                ? text.mid(2).toUInt(&ok, 16)
                                : text.toUInt(&ok, 10);
         if (!ok || value > 0xFFFF) {
-            setStatus(QStringLiteral("Строка %1: неверное значение '%2'").arg(saveRow + 1).arg(text), true);
+            setNotice(QStringLiteral("Строка %1: неверное значение '%2'").arg(saveRow + 1).arg(text), true);
             return;
         }
         if (!c.writeSingleRegister(kSaveTrigAddr, quint16(value))) {
-            setStatus(QStringLiteral("Строка %1: %2").arg(saveRow + 1).arg(c.lastError()), true);
+            setNotice(QStringLiteral("Строка %1: %2").arg(saveRow + 1).arg(c.lastError()), true);
             return;
         }
         ++written;
+        c.close();
+        verifySave(expect);
+        return;
     }
 
-    setStatus(QStringLiteral("Записано регистров: %1").arg(written), false);
+    setNotice(QStringLiteral("Записано регистров: %1").arg(written), false);
+}
+
+// After the save trigger the module blocks on the Flash write and may re-apply
+// the network config, dropping the link for a moment. Wait for it to come back,
+// then read the written registers back and compare. Note this proves the module
+// is alive and holds the values; it does not read Flash itself.
+void OnlineTab::verifySave(const QVector<RegExpect> &expect)
+{
+    setNotice(QStringLiteral("Сохранение настроек…"));
+    auto pause = [](int ms) {
+        QEventLoop loop;
+        QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+        loop.exec();
+    };
+    pause(1500);
+
+    const QString ip = m_ip->text().trimmed();
+    std::unique_ptr<ModbusTcpClient> c;
+    QElapsedTimer t;
+    t.start();
+    while (t.elapsed() < 12000) {
+        auto cand = std::make_unique<ModbusTcpClient>(1000);
+        if (cand->connectToServer(ip, quint16(m_port->value()), quint8(m_unitId->value()))) {
+            c = std::move(cand);
+            break;
+        }
+        pause(500);
+    }
+    if (!c) {
+        setNotice(QStringLiteral("Сохранение: модуль не ответил по %1 за 12 с — результат не подтверждён "
+                                 "(если менялся IP, подключитесь по новому адресу)").arg(ip), true);
+        return;
+    }
+
+    QStringList bad;
+    for (const RegExpect &e : expect) {
+        QVector<quint16> got;
+        if (!c->readHoldingRegisters(e.addr, quint16(e.words.size()), got)) {
+            setNotice(QStringLiteral("Сохранение: не удалось прочитать HR%1 для проверки — %2")
+                          .arg(e.addr).arg(c->lastError()), true);
+            return;
+        }
+        if (got != e.words) bad << QStringLiteral("HR%1").arg(e.addr);
+    }
+    if (!bad.isEmpty()) {
+        setNotice(QStringLiteral("Сохранение: расхождение после записи — %1").arg(bad.join(QStringLiteral(", "))), true);
+        return;
+    }
+    setNotice(QStringLiteral("Сохранено, проверено регистров: %1").arg(expect.size()), false);
 }

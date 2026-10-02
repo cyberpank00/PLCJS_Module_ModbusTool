@@ -1,6 +1,7 @@
 #include "ModbusTcpClient.h"
 
 #include <QElapsedTimer>
+#include <QNetworkProxy>
 #include <QTcpSocket>
 
 ModbusTcpClient::ModbusTcpClient(int timeoutMs)
@@ -9,6 +10,10 @@ ModbusTcpClient::ModbusTcpClient(int timeoutMs)
     , m_txId(0)
     , m_timeoutMs(timeoutMs)
 {
+    // Lab modules sit on the local segment; never route them through a system
+    // proxy (a VPN/TUN client installs one, and Qt then fails with
+    // "The proxy type is invalid for this operation").
+    m_sock->setProxy(QNetworkProxy::NoProxy);
 }
 
 ModbusTcpClient::~ModbusTcpClient()

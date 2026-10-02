@@ -50,13 +50,21 @@ private:
         QString (*decode)(quint16) = nullptr;
     };
 
+    // Registers (address + words) expected to read back unchanged after SAVE.
+    struct RegExpect {
+        quint16          addr = 0;
+        QVector<quint16> words;
+    };
+
     void rebuildTable();
     void buildFreeRows();
+    void verifySave(const QVector<RegExpect> &expect);
     void buildMapRows(const QVector<maps::RegEntry> &entries);
     QSpinBox *addrSpin(int row) const;
     QLineEdit *writeEdit(int row) const;
     void writeMagic(quint16 addr, quint16 value, const QString &label, bool dangerous);
     void setStatus(const QString &text, bool error = false);
+    void setNotice(const QString &text, bool error = false);   // 5 s write/save result
 
     QComboBox    *m_map;    // "Карта модуля" preset selector
     QLineEdit    *m_ip;
@@ -66,6 +74,8 @@ private:
     QComboBox    *m_base;   // 0 = dec, 1 = hex display
     QTableWidget *m_table;
     QLabel       *m_status;
+    QLabel       *m_notice;       // transient write/save result, right of the poll controls
+    QTimer       *m_noticeTimer;
 
     // Continuous polling controls (bottom row).
     QCheckBox    *m_continuous;  // enable periodic re-read
