@@ -16,6 +16,8 @@
 #include <QUdpSocket>
 #include <QVBoxLayout>
 
+#include "protocol/Pdp.h"
+
 // ---------------------------------------------------------------------------
 // PLCJS Discovery Protocol (PDP) — must match Application/discovery/discovery.c
 // ---------------------------------------------------------------------------
@@ -191,22 +193,37 @@ DiscoveryTab::DiscoveryTab(QWidget *parent)
 void DiscoveryTab::refreshNics()
 {
     m_nic->clear();
+    // Physical adapters first (and selected by default); VPN/TUN and hypervisor
+    // adapters are listed last and tagged — a broadcast out of them never
+    // reaches a module on the wire.
+    int firstVirtual = -1;
     const auto ifaces = QNetworkInterface::allInterfaces();
     for (const QNetworkInterface &ifc : ifaces) {
         if (!(ifc.flags() & QNetworkInterface::IsUp) ||
             !(ifc.flags() & QNetworkInterface::IsRunning) ||
             (ifc.flags() & QNetworkInterface::IsLoopBack))
             continue;
+        const bool virt = pdp::isVirtualInterface(ifc);
         for (const QNetworkAddressEntry &e : ifc.addressEntries()) {
             const QHostAddress a = e.ip();
             if (a.protocol() != QAbstractSocket::IPv4Protocol)
                 continue;
-            const QString label = QString("%1 — %2").arg(ifc.humanReadableName(), a.toString());
-            m_nic->addItem(label, a.toString());
+            QString label = QString("%1 — %2").arg(ifc.humanReadableName(), a.toString());
+            if (virt) {
+                label += QStringLiteral("  [виртуальный]");
+                m_nic->addItem(label, a.toString());
+                if (firstVirtual < 0) firstVirtual = m_nic->count() - 1;
+            } else {
+                const int at = firstVirtual < 0 ? m_nic->count() : firstVirtual;
+                m_nic->insertItem(at, label, a.toString());
+                if (firstVirtual >= 0) ++firstVirtual;
+            }
         }
     }
     if (m_nic->count() == 0)
         setStatus(QStringLiteral("Нет активных IPv4-адаптеров"), true);
+    else
+        m_nic->setCurrentIndex(0);
 }
 
 void DiscoveryTab::onScan()
@@ -244,17 +261,19 @@ void DiscoveryTab::sendCommand(quint8 opcode, const QByteArray &targetMac,
     f.append(payload);
 
     // Bind a transient socket to the chosen NIC so the broadcast egresses that
-    // interface (a host can have several IPv4 / link-local interfaces).
+    // interface (a host can have several IPv4 / link-local interfaces), and
+    // send to the NIC's subnet-directed broadcast as well as 255.255.255.255 so
+    // the frame stays on-link even when a VPN/TUN client owns the default route.
     QUdpSocket tx;
     if (!tx.bind(nic, 0)) {
         setStatus(QStringLiteral("Не удалось привязать сокет к ") + nic.toString() +
                       QStringLiteral(": ") + tx.errorString(), true);
         return;
     }
-    const qint64 n = tx.writeDatagram(f, QHostAddress::Broadcast, kPort);
+    const bool ok = pdp::sendBroadcast(tx, nic.toString(), f);
     tx.flush();
     tx.waitForBytesWritten(200);
-    if (n != f.size())
+    if (!ok)
         setStatus(QStringLiteral("Ошибка отправки: ") + tx.errorString(), true);
 }
 

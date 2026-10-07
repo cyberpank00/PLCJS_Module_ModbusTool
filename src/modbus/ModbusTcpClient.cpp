@@ -1,8 +1,11 @@
 #include "ModbusTcpClient.h"
 
 #include <QElapsedTimer>
+#include <QHostAddress>
 #include <QNetworkProxy>
 #include <QTcpSocket>
+
+#include "protocol/Pdp.h"
 
 ModbusTcpClient::ModbusTcpClient(int timeoutMs)
     : m_sock(new QTcpSocket)
@@ -26,6 +29,13 @@ bool ModbusTcpClient::connectToServer(const QString &host, quint16 port, quint8 
 {
     m_unitId = unitId;
     close();
+    // Pin the socket to the local adapter that shares the module's subnet.
+    // Windows' strong-host model then sends only out of that adapter, so the
+    // SYN cannot be swallowed by a VPN/TUN client that owns the default route.
+    // Off-subnet targets (via a gateway) keep normal routing.
+    const QString nic = pdp::nicForPeer(host);
+    if (!nic.isEmpty())
+        m_sock->bind(QHostAddress(nic), 0);
     m_sock->connectToHost(host, port);
     if (!m_sock->waitForConnected(m_timeoutMs)) {
         m_lastError = QStringLiteral("Не удалось подключиться к %1:%2 — %3")

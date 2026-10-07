@@ -2,8 +2,11 @@
 #define PDP_H
 
 #include <QByteArray>
+#include <QHostAddress>
 #include <QList>
+#include <QNetworkInterface>
 #include <QString>
+#include <QUdpSocket>
 #include <cstdint>
 
 // PLCJS Discovery Protocol (PDP) — UDP/20556 broadcast client helpers.
@@ -46,6 +49,20 @@ void setNetStatic(const QString &nicIp, const QString &macStr,
 // Local IPv4 address on the same subnet as `peerIp` (to bind the broadcast
 // socket on a multi-homed host). Empty if none matches.
 QString nicForPeer(const QString &peerIp);
+
+// Destinations for a PDP broadcast sent from local `nicIp`: the subnet-directed
+// broadcast of that NIC first (routed on-link via the physical adapter even
+// when a VPN/TUN client owns the default route), then 255.255.255.255 as a
+// fallback. Just the limited broadcast if `nicIp` is empty/unknown.
+QList<QHostAddress> broadcastAddresses(const QString &nicIp);
+
+// Send `frame` to every address from broadcastAddresses(nicIp) out of `tx`.
+// Returns false if any send fails.
+bool sendBroadcast(QUdpSocket &tx, const QString &nicIp, const QByteArray &frame);
+
+// Heuristic: true for VPN/TUN/hypervisor adapters (wintun, TAP, Hyper-V, VMware,
+// WSL, ...) that can never reach a module on the wire.
+bool isVirtualInterface(const QNetworkInterface &ifc);
 
 } // namespace pdp
 

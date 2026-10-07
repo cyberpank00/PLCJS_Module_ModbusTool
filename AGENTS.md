@@ -135,6 +135,26 @@ Broadcast replies mean **inbound UDP 20556 must be allowed in the Windows
 firewall**, or discovery silently returns nothing. This is the single most common
 "the tool is broken" report; the rule is in `README.md`.
 
+### VPN / TUN hardening (host side, not firmware)
+The second most common report is a VPN client (Xray, sing-box, Clash) in TUN
+mode hijacking the default route — packets to the module go into the tunnel
+and never reach the wire; the firmware sees nothing and cannot help. The tool
+defends itself (since 1.3.13), keep these in place:
+
+- `main.cpp` sets `QNetworkProxy::setApplicationProxy(NoProxy)` for every socket.
+- `ModbusTcpClient::connectToServer` binds the socket to the local adapter on
+  the target's subnet (`pdp::nicForPeer`) before `connectToHost`; Windows'
+  strong-host model then forces egress via that adapter. Off-subnet targets
+  are left to normal routing.
+- All PDP sends go through `pdp::sendBroadcast`, which emits the NIC's
+  subnet-directed broadcast (on-link route) *and* `255.255.255.255`.
+- `DiscoveryTab::refreshNics` lists physical adapters first and tags
+  TUN/hypervisor ones `[виртуальный]` (`pdp::isVirtualInterface`: interface
+  type + name heuristics). Extend the hint list there, not at call sites.
+
+What code cannot fix: WFP-level interception (`strict_route`/`auto_route`).
+That needs a `geoip:private → direct` rule in the VPN client.
+
 ### Register maps
 `float32` values occupy two registers, **high word first** (`register[N]` = bits
 31..16). This matters for the 4RTD map; a wrong word order yields

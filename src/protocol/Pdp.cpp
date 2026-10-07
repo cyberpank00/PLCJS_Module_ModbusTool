@@ -75,7 +75,7 @@ QList<Device> discover(const QString &nicIp, int timeoutMs)
     else tx.bind(QHostAddress::AnyIPv4, 0);
 
     const QByteArray req = buildHeader(kOpIdentify, 0xF00D, QByteArray(), 0);
-    tx.writeDatagram(req, QHostAddress::Broadcast, kPort);
+    sendBroadcast(tx, nicIp, req);
 
     QMap<QString, Device> found;
     QElapsedTimer t;
@@ -142,7 +142,7 @@ void setNetStatic(const QString &nicIp, const QString &macStr,
     if (!nicIp.isEmpty()) tx.bind(QHostAddress(nicIp), 0);
     else tx.bind(QHostAddress::AnyIPv4, 0);
     for (int i = 0; i < 2; ++i) {
-        tx.writeDatagram(f, QHostAddress::Broadcast, kPort);
+        sendBroadcast(tx, nicIp, f);
         tx.waitForBytesWritten(200);
         QThread::msleep(200);
     }
@@ -165,6 +165,54 @@ QString nicForPeer(const QString &peerIp)
         }
     }
     return QString();
+}
+
+QList<QHostAddress> broadcastAddresses(const QString &nicIp)
+{
+    QList<QHostAddress> out;
+    const QHostAddress nic(nicIp);
+    if (!nic.isNull() && nic != QHostAddress::AnyIPv4) {
+        for (const QNetworkInterface &ifc : QNetworkInterface::allInterfaces()) {
+            for (const QNetworkAddressEntry &e : ifc.addressEntries()) {
+                if (e.ip() == nic && !e.broadcast().isNull() &&
+                    e.broadcast() != QHostAddress::Broadcast) {
+                    out.append(e.broadcast());
+                }
+            }
+        }
+    }
+    out.append(QHostAddress::Broadcast);
+    return out;
+}
+
+bool sendBroadcast(QUdpSocket &tx, const QString &nicIp, const QByteArray &frame)
+{
+    bool ok = true;
+    for (const QHostAddress &dst : broadcastAddresses(nicIp))
+        ok &= tx.writeDatagram(frame, dst, kPort) == frame.size();
+    return ok;
+}
+
+bool isVirtualInterface(const QNetworkInterface &ifc)
+{
+    switch (ifc.type()) {
+    case QNetworkInterface::Virtual:
+    case QNetworkInterface::Ppp:
+    case QNetworkInterface::Loopback:
+        return true;
+    default:
+        break;
+    }
+    static const char *const kHints[] = {
+        "tun", "tap", "xray", "sing-box", "clash", "meta", "mihomo", "vpn",
+        "wireguard", "openvpn", "zerotier", "tailscale", "hamachi", "radmin",
+        "hyper-v", "vethernet", "vmware", "virtualbox", "vbox", "docker", "wsl",
+        "loopback", "bluetooth",
+    };
+    const QString name = (ifc.humanReadableName() + QLatin1Char(' ') + ifc.name()).toLower();
+    for (const char *h : kHints)
+        if (name.contains(QLatin1String(h))) return true;
+    return false;
 }
 
 } // namespace pdp
