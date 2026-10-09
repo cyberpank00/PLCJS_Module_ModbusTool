@@ -10,6 +10,9 @@ firmware. It contains **hand-written re-implementations** of protocols defined i
 the firmware repos — there is no shared code, so it drifts silently. See
 *Multi-repo*.
 
+`README.md` is user-facing. Development workflow, build details and internal
+source layout live here.
+
 ## Build
 
 Qt6 (Widgets, Network), CMake >= 3.19, C++17. No CMake presets; no external
@@ -29,10 +32,31 @@ $env:Path = "C:\Qt\Tools\mingw1310_64\bin;" + $env:Path
 
 Or open `CMakeLists.txt` in Qt Creator (kit Desktop Qt 6.11.1 MinGW 64-bit).
 
-Release build is a single self-contained `.exe` (~6 MB) linked against a
-size-optimised **static** Qt at `D:/qt-static/install-size`, built with
-`-DCMAKE_BUILD_TYPE=MinSizeRel`. The exact static-Qt `configure` line and the
-build commands are in `README.md` — do not re-derive them.
+Release build is a single self-contained `.exe` linked against a size-optimised
+**static** Qt at `D:/qt-static/install-size`, built with
+`-DCMAKE_BUILD_TYPE=MinSizeRel`.
+
+Static Qt (`qtbase 6.11.1`) is configured as:
+
+```powershell
+configure -static -static-runtime -release -platform win32-g++ `
+    -no-opengl -no-openssl -optimize-size -no-feature-gif -no-feature-jpeg `
+    -nomake examples -nomake tests -prefix D:/qt-static/install-size `
+    -- "-DCMAKE_CXX_FLAGS=-ffunction-sections -fdata-sections" `
+       "-DCMAKE_C_FLAGS=-ffunction-sections -fdata-sections"
+```
+
+Static app build:
+
+```powershell
+$env:Path = "C:\Qt\Tools\mingw1310_64\bin;C:\Qt\Tools\Ninja;C:\Qt\Tools\upx;" + $env:Path
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" -B build-static -G Ninja `
+    "-DCMAKE_BUILD_TYPE=MinSizeRel" `
+    "-DCMAKE_PREFIX_PATH=D:/qt-static/install-size" `
+    "-DCMAKE_C_COMPILER=C:/Qt/Tools/mingw1310_64/bin/gcc.exe" `
+    "-DCMAKE_CXX_COMPILER=C:/Qt/Tools/mingw1310_64/bin/g++.exe"
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" --build build-static
+```
 
 Two build-system landmines, both already solved; do not "simplify" them:
 - **RC compiler.** On Windows the build prefers `llvm-windres` (auto-detected in
@@ -51,7 +75,7 @@ There are no automated tests. Verification is manual, against a real module.
 
 The static build output is **committed**:
 `build-static/module_tool_<MAJOR>.<MINOR>.<PATCH>.exe` (e.g.
-`module_tool_1.3.1.exe`). `.gitignore` ignores everything else under `build-*/`
+`module_tool_1.3.13.exe`). `.gitignore` ignores everything else under `build-*/`
 (CMake cache, ninja files, autogen) and un-ignores only `build-static/*.exe`.
 The file name is derived by CMake from the `APP_VERSION_*` defines in
 `src/app_version.h` (`OUTPUT_NAME`, static build only); do not rename the exe by
@@ -60,9 +84,8 @@ binary always matches the tracked sources.
 
 **On a new machine the static toolchain must be recreated first** — the static
 Qt at `D:/qt-static/install-size` is a local artefact, not part of the repo or
-of the Qt installer. Recipe (as of 1.3.1): download
-`qtbase-everywhere-src-6.11.1` from `download.qt.io`, run the `configure` line
-from `README.md` in an out-of-source dir (e.g. `D:/qt-static/build-size`), then
+of the Qt installer. Download `qtbase-everywhere-src-6.11.1`, run the configure
+line above in an out-of-source dir (e.g. `D:/qt-static/build-size`), then
 `cmake --build . --parallel && cmake --install .`. Only qtbase is needed. If the
 paths differ, adjust `CMAKE_PREFIX_PATH` in the `build-static` configure line
 (and the `HINTS` for `llvm-windres` / `upx` in `CMakeLists.txt` if those moved).
@@ -75,7 +98,7 @@ identical.
 |---|---|
 | `main.cpp`, `MainWindow.*` | Entry point; a `QTabWidget` with three tabs. |
 | `tabs/DiscoveryTab.*` | PDP discovery UI: list by MAC, assign network, set name, flash LED, reboot, factory reset. |
-| `tabs/OnlineTab.*` | Register browser. "Карта модуля" selector switches between free-address mode and named per-module maps. |
+| `tabs/OnlineTab.*` | Register browser. "Карта модуля" selector switches between named per-module maps. |
 | `tabs/FwUpdateTab.*` | Firmware-update UI (pick `.bin`, addresses, progress, log). |
 | `tabs/FwWorker.*` | The OTA state machine, run off the GUI thread. |
 | `maps/ModuleMaps.*` | Named register maps — `build12DI()`, `build12DO()`, `build4RTD()`, `build8AIC()`, `build8AOC()`. |
@@ -104,17 +127,12 @@ Bump checklist — **five** values in that one file, and they must agree:
 3. `APP_PRODUCT_VER` — e.g. `"1.00.06"`.
 4. `APP_VERSION_MAJOR` / `APP_VERSION_MINOR` / `APP_VERSION_BUILD` as applicable.
 
-The strings are duplicated deliberately: `windres` does not reliably expand
-multi-part macro string literals, so they cannot be composed from the numeric
+The strings are duplicated deliberately and must stay in sync with the numeric
 defines. Changing the numbers without the strings produces an `.exe` whose file
 properties disagree with its title bar.
 
-`CMakeLists.txt` parses the numeric defines from this header for
-`project(VERSION)` and for the static exe's file name, so a bump needs no CMake
-edit (the header is in `CMAKE_CONFIGURE_DEPENDS`, so a plain `cmake --build`
-re-configures). Every bump changes the exe name: `git rm` the old
-`build-static/module_tool_<old>.exe` in the same commit, so exactly one exe is
-tracked.
+Every bump changes the committed release exe name; replace the old exe in the
+same commit so exactly one release binary stays tracked.
 
 A chronological version-review / changelog file is planned; once it exists, add
 an entry there in the same commit as the bump.
@@ -177,13 +195,10 @@ COMMIT) deliberately has no button: it needs a slot number and is irreversible.
 
 ## Known stale documentation
 
-Both are cosmetic but will mislead:
-
-- `README.md` describes **four** tabs including "Настройки" (settings). That tab
-  was removed (`UI: remove Settings tab`); `MainWindow.cpp` adds only
-  Обнаружение / Онлайн / Обновление FW.
-- The header comment in `src/maps/ModuleMaps.h` says 12DO and 4RTD are stubs.
-  They are fully implemented — `isStub()` returns `false` unconditionally.
+The header comment in `src/maps/ModuleMaps.h` still says 12DO is a stub and
+that Free/stub maps return empty. That is outdated: 12DO and 4RTD are fully
+implemented, the visible UI no longer exposes the free map, and `entriesFor()`
+returns real rows for every visible map.
 
 ## Multi-repo workspace
 
@@ -228,7 +243,8 @@ it actively misleads. Touch it when:
   firmware-side wire-format change;
 - a register map is added or changed in `ModuleMaps.cpp` (mirror of a firmware
   `modbus_app.h` change);
-- the build procedure, static-Qt line or windres/RC landmine changes;
+- the build procedure, static-Qt line, tracked release artefact policy or other
+  development workflow changes;
 - `APP_VERSION_PATCH` / `APP_VERSION_MINOR` is bumped and the version-policy
   text needs the new example value;
 - a module ID is added or a new `buildXXX()` is introduced;
@@ -239,3 +255,4 @@ it actively misleads. Touch it when:
 Pure refactors with no behavioural change do not require an update, but when in
 doubt, update — the cost is a few lines of text, the cost of a stale invariant
 is a field bug.
+
