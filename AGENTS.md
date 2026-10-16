@@ -75,7 +75,7 @@ There are no automated tests. Verification is manual, against a real module.
 
 The static build output is **committed**:
 `build-static/module_tool_<MAJOR>.<MINOR>.<PATCH>.exe` (e.g.
-`module_tool_1.3.13.exe`). `.gitignore` ignores everything else under `build-*/`
+`module_tool_1.3.14.exe`). `.gitignore` ignores everything else under `build-*/`
 (CMake cache, ninja files, autogen) and un-ignores only `build-static/*.exe`.
 The file name is derived by CMake from the `APP_VERSION_*` defines in
 `src/app_version.h` (`OUTPUT_NAME`, static build only); do not rename the exe by
@@ -192,6 +192,16 @@ post-pass over every map keyed by address, so a new map gets them for free.
 The write field parses **decimal by default, hex only with a `0x` prefix**;
 that is why every magic hint spells out the decimal value. HR131 (calibration
 COMMIT) deliberately has no button: it needs a slot number and is irreversible.
+
+Enumerated holding registers (sensor type, LED mode, net mode, smoothing, gain
+override, alpha mode, enable/DQ 0-1, comms-loss mode, ADC rate) get a
+drop-down instead of a text field. `attachChoices()` in `ModuleMaps.cpp` builds
+the list **from the row's decoder** (table `kEnums`: decoder + max code), so the
+labels always match the "Расшифровка" column. A new enum register needs only a
+decoder plus a `kEnums` line; numeric registers (filters, thresholds, octets,
+masks, triggers) must not be added there. The first combo item "— не менять —"
+means "skip on Записать"; `OnlineTab::writeText()` is the single reader for
+both widget kinds.
 
 ## Known stale documentation
 

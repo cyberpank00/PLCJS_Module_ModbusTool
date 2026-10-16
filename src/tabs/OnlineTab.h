@@ -34,6 +34,9 @@ public:
 
     static constexpr int kFreeRowCount = 16;
 
+protected:
+    bool eventFilter(QObject *obj, QEvent *ev) override;
+
 private slots:
     void onRead();
     void onWrite();
@@ -62,6 +65,7 @@ private:
     void buildMapRows(const QVector<maps::RegEntry> &entries);
     QSpinBox *addrSpin(int row) const;
     QLineEdit *writeEdit(int row) const;
+    QString writeText(int row) const;
     void writeMagic(quint16 addr, quint16 value, const QString &label, bool dangerous);
     void setStatus(const QString &text, bool error = false);
     void setNotice(const QString &text, bool error = false);   // 5 s write/save result

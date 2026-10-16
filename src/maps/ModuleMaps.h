@@ -21,6 +21,13 @@ struct MagicAction {
     bool    dangerous = false;
 };
 
+// One allowed value of an enumerated holding register (sensor type, LED mode,
+// smoothing, ...). Rows with choices get a drop-down instead of a text field.
+struct Choice {
+    quint16 value;
+    QString label;      // e.g. "2 — STATE_MACHINE"
+};
+
 // A single register row in a module map.
 struct RegEntry {
     enum Type { Input, Holding }; // FC04 (read-only) vs FC03/FC06 (read/write)
@@ -48,6 +55,10 @@ struct RegEntry {
     // attachStandardActions() for the family-wide trigger registers; the free
     // text field stays available for anything not covered.
     QVector<MagicAction> actions;
+
+    // Allowed values for an enumerated register. Filled by attachChoices()
+    // from the row's decoder; empty for free numeric fields.
+    QVector<Choice> choices;
 };
 
 // Identifies which map a combo-box entry selects.

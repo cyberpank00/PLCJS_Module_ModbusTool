@@ -2,6 +2,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFormLayout>
@@ -293,7 +294,24 @@ void OnlineTab::buildMapRows(const QVector<maps::RegEntry> &entries)
             m_table->setItem(row, col, item);
         }
 
-        if (e.writable) {
+        if (e.writable && !e.choices.isEmpty()) {
+            // Enumerated register: pick a value instead of typing a code. The
+            // first entry means "leave unchanged", so "Записать" skips the row.
+            auto *combo = new QComboBox;
+            combo->setObjectName(QStringLiteral("writeCombo"));
+            // The wheel must scroll the table, not silently change the value
+            // of whichever combo happens to be under the cursor.
+            combo->setFocusPolicy(Qt::StrongFocus);
+            combo->installEventFilter(this);
+            combo->addItem(QStringLiteral("— не менять —"));
+            for (const maps::Choice &ch : e.choices)
+                combo->addItem(ch.label, uint(ch.value));
+            combo->setMaxVisibleItems(qMin(int(e.choices.size()) + 1, 24));
+            if (!e.writeHint.isEmpty())
+                combo->setToolTip(QStringLiteral("<pre style='font-family:Consolas,monospace;margin:0'>%1</pre>")
+                                      .arg(e.writeHint.toHtmlEscaped()));
+            m_table->setCellWidget(row, ColWrite, combo);
+        } else if (e.writable) {
             auto *write = new QLineEdit;
             write->setObjectName(QStringLiteral("writeEdit"));
             // Multi-line hints: first line is the placeholder, the full text the tooltip.
@@ -367,6 +385,27 @@ QLineEdit *OnlineTab::writeEdit(int row) const
     if (!w) return nullptr;
     if (auto *e = qobject_cast<QLineEdit *>(w)) return e;
     return w->findChild<QLineEdit *>(QStringLiteral("writeEdit"));
+}
+
+// Redirect mouse-wheel events from the value drop-downs to the table viewport,
+// so the table keeps scrolling while the cursor passes over a combo.
+bool OnlineTab::eventFilter(QObject *obj, QEvent *ev)
+{
+    if (ev->type() == QEvent::Wheel && obj->objectName() == QLatin1String("writeCombo")) {
+        QCoreApplication::sendEvent(m_table->viewport(), ev);
+        return true;
+    }
+    return QWidget::eventFilter(obj, ev);
+}
+
+// Pending write value of a row as text: the typed value, or the selected
+// choice's code for a drop-down row. Empty = nothing to write.
+QString OnlineTab::writeText(int row) const
+{
+    if (auto *cb = qobject_cast<QComboBox *>(m_table->cellWidget(row, ColWrite)))
+        return cb->currentIndex() > 0 ? QString::number(cb->currentData().toUInt()) : QString();
+    const QLineEdit *edit = writeEdit(row);
+    return edit ? edit->text().trimmed() : QString();
 }
 
 void OnlineTab::writeMagic(quint16 addr, quint16 value, const QString &label, bool dangerous)
@@ -572,10 +611,7 @@ void OnlineTab::onWrite()
         const Row &info = m_rows.at(row);
         if (!info.writable)
             continue;
-        auto *edit = writeEdit(row);
-        if (!edit)
-            continue;
-        const QString text = edit->text().trimmed();
+        const QString text = writeText(row);
         if (text.isEmpty())
             continue;
         const quint16 addr = info.addrEditable
@@ -623,8 +659,7 @@ void OnlineTab::onWrite()
 
     // Deferred save trigger, written last so all config writes are persisted.
     if (saveRow >= 0) {
-        auto *edit = writeEdit(saveRow);
-        const QString text = edit ? edit->text().trimmed() : QString();
+        const QString text = writeText(saveRow);
         bool ok = false;
         const uint value = text.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)
                                ? text.mid(2).toUInt(&ok, 16)

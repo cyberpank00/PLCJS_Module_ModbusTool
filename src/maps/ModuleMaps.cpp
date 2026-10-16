@@ -720,6 +720,31 @@ void attachStandardActions(QVector<RegEntry> &e, bool analogPowerCycle)
     }
 }
 
+// Enumerated holding registers get a drop-down instead of a free text field.
+// Keyed by decoder, so every map using e.g. decodeLedMode gets the same list
+// and the labels always match the "Расшифровка" column. Registers that take a
+// number (filters, thresholds, IP octets, masks, triggers) have no entry here.
+void attachChoices(QVector<RegEntry> &e)
+{
+    struct Enum { QString (*decode)(quint16); quint16 max; };
+    static const Enum kEnums[] = {
+        {decodeLedMode, 2},     {decodeNetMode, 2},     {decodeBool01, 1},
+        {decodeDqState, 1},     {decodeDqLossMode, 2},  {decodeRtdType, 20},
+        {decodeAlphaMode, 1},   {decodeCalRange, 5},    {decodeSmoothing, 3},
+        {decodeAicRate, 2},     {decodeAocLossMode, 2},
+    };
+    for (RegEntry &r : e) {
+        if (r.type != RegEntry::Holding || !r.writable || r.fmt != RegEntry::U16 || !r.decode)
+            continue;
+        for (const Enum &en : kEnums) {
+            if (en.decode != r.decode) continue;
+            for (quint16 v = 0; v <= en.max; ++v)
+                r.choices.push_back({v, QStringLiteral("%1 — %2").arg(v).arg(en.decode(v))});
+            break;
+        }
+    }
+}
+
 } // namespace
 
 QVector<RegEntry> entriesFor(MapId id)
@@ -734,6 +759,7 @@ QVector<RegEntry> entriesFor(MapId id)
     case MapId::Free:  return {};
     }
     attachStandardActions(e, id == MapId::M8AOC);
+    attachChoices(e);
     return e;
 }
 
