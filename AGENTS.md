@@ -69,7 +69,11 @@ Two build-system landmines, both already solved; do not "simplify" them:
 `qt_add_executable` (not plain `add_executable`) is required so a static Qt
 auto-imports its platform/style plugins.
 
-There are no automated tests. Verification is manual, against a real module.
+`tests/protocol_tests.cpp` checks the MAC register mapping, legacy status reads,
+identity rejection, multi-device/IP-conflict selection and image headers.
+It is built when `BUILD_TESTING=ON`; run
+`ctest --test-dir build-static --output-on-failure` for the static build.
+These host tests do not replace a real-module OTA/reconnect/power-cut campaign.
 
 ### Release artefact lives in the repo
 
@@ -148,6 +152,24 @@ match the firmware byte-for-byte:
 - **OTA:** `BEGIN_UPDATE`(1) → write-block → `FINALIZE_UPDATE`(2) →
   `INSTALL_UPDATE`(3) → `REBOOT`(5), with `ABORT_UPDATE`(4). Bootloader magic
   `0xB00710AD`. Block payload capped at 240 bytes (120 registers).
+
+Since tool 1.3.15 / BL 1.8:
+- IR `0x0019..0x001B` contains MAC bytes, high byte first; legacy status remains
+  25 registers, verified identity reads 28. No existing offsets move.
+- Modifying BL actions always select through PDP and verify MAC on the same
+  TCP connection used for writes, also after reconnect/SET_NET. Multiple BLs
+  require a MAC; observed IP conflicts fail. Never restore the magic-only
+  fast path. Legacy BLs remain readable but protected writes fail closed.
+- Learn the application's MAC before requesting BL entry and retain it across
+  the reset; do not rediscover an arbitrary sole BL after losing that identity.
+- FINALIZE waits for explicit INSTALL, including after reset. The BL locks
+  writes during installation (Modbus exception 6); disconnect does not cancel it.
+- Installation success requires BL OK or the selected MAC's application with
+  the expected product/version. Connection loss alone is inconclusive.
+- One active BL TCP client, 30 s idle timeout, 5 s partial ADU timeout. Request
+  timeouts during update allow 15 s for Flash operations.
+- PDP wire layout stays unchanged; BL SET_NET/REBOOT now require an exact
+  nonzero target MAC and are rejected while installing. Broadcast IDENTIFY stays.
 
 Broadcast replies mean **inbound UDP 20556 must be allowed in the Windows
 firewall**, or discovery silently returns nothing. This is the single most common
@@ -265,4 +287,3 @@ it actively misleads. Touch it when:
 Pure refactors with no behavioural change do not require an update, but when in
 doubt, update — the cost is a few lines of text, the cost of a stale invariant
 is a field bug.
-

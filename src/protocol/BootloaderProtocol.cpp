@@ -1,4 +1,5 @@
 #include "BootloaderProtocol.h"
+#include <QRegularExpression>
 
 namespace boot {
 
@@ -22,7 +23,39 @@ Status parseStatus(const QVector<quint16> &regs)
     s.cmdStatus    = regs[IR_CMD_STATUS];
     s.stagingValid = regs[IR_STAGING_VALID];
     s.appProductId = u32FromRegs(regs, IR_APP_PRODUCT_ID_HI);
+    if (regs.size() >= IR_COUNT_WITH_MAC) {
+        QStringList bytes;
+        for (int i = IR_MAC; i < IR_COUNT_WITH_MAC; ++i) {
+            bytes << QStringLiteral("%1").arg(regs[i] >> 8, 2, 16, QChar('0'))
+                  << QStringLiteral("%1").arg(regs[i] & 255, 2, 16, QChar('0'));
+        }
+        s.mac = normalizeMac(bytes.join(':'));
+    }
     return s;
+}
+
+QString normalizeMac(const QString &mac)
+{
+    const QString value = mac.trimmed().toLower().replace('-', ':');
+    static const QRegularExpression pattern(QStringLiteral("^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$"));
+    if (!pattern.match(value).hasMatch() || value == QStringLiteral("00:00:00:00:00:00")
+        || (value.left(2).toUInt(nullptr, 16) & 1u))
+        return {};
+    return value;
+}
+
+QString identityError(const Status &status, const QString &expectedMac)
+{
+    const QString expected = normalizeMac(expectedMac);
+    if (expected.isEmpty())
+        return QStringLiteral("Укажите корректный MAC выбранного модуля.");
+    if (status.magic != kBootloaderMagic)
+        return QStringLiteral("Подключённое устройство не является загрузчиком.");
+    if (status.version < 0x0108u || status.mac.isEmpty())
+        return QStringLiteral("Загрузчик не поддерживает проверку MAC. Требуется BL 1.8 или новее.");
+    if (status.mac != expected)
+        return QStringLiteral("MAC не совпадает: выбран %1, подключён %2.").arg(expected, status.mac);
+    return {};
 }
 
 FwHeader parseFwHeader(const QByteArray &image)
@@ -30,7 +63,7 @@ FwHeader parseFwHeader(const QByteArray &image)
     FwHeader h;
     // fw_header_t (packed): magic(4) product_id(4) hw_revision(2) reserved0(2)
     //                       fw_version(4) ...  — little-endian on the STM32.
-    if (image.size() < kFwHeaderOffset + 16)
+    if (image.size() < kFwHeaderOffset + 28)
         return h;
     const auto *p = reinterpret_cast<const quint8 *>(image.constData()) + kFwHeaderOffset;
     auto rd32 = [](const quint8 *b) {
@@ -38,7 +71,7 @@ FwHeader parseFwHeader(const QByteArray &image)
     };
     auto rd16 = [](const quint8 *b) { return quint16(b[0]) | (quint16(b[1]) << 8); };
 
-    if (rd32(p) != kFwImageMagic)
+    if (rd32(p) != kFwImageMagic || rd32(p + 16) != 0)
         return h; // no valid header
     h.valid     = true;
     h.productId = rd32(p + 4);

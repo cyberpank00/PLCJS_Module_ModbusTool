@@ -90,6 +90,18 @@ set_source_files_properties(src/app.rc PROPERTIES
 
 target_link_libraries(module_tool PRIVATE Qt6::Widgets Qt6::Network)
 
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(protocol_tests tests/protocol_tests.cpp
+        src/protocol/BootloaderProtocol.cpp src/protocol/Pdp.cpp)
+    target_include_directories(protocol_tests PRIVATE src)
+    target_link_libraries(protocol_tests PRIVATE Qt6::Core Qt6::Network)
+    target_compile_options(protocol_tests PRIVATE -UNDEBUG)
+    set_target_properties(protocol_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+    add_test(NAME protocol COMMAND protocol_tests)
+endif()
+
 # Static single-file build: shrink the exe by letting the linker drop unused
 # code/data sections and by stripping symbols. Applied to the size-oriented
 # configs (Release, MinSizeRel) only for the static Qt build, so the normal

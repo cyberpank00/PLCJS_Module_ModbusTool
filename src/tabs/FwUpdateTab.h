@@ -27,10 +27,10 @@ public:
 
 signals:
     void requestStatus(const QString &ip, quint16 port);
-    void requestEnterBootloader(const QString &appIp, const QString &bootIp, quint16 port);
+    void requestEnterBootloader(const QString &appIp, const QString &bootIp, quint16 port, const QString &mac);
     void requestUpdate(const FwUpdateParams &p);
-    void requestAbort(const QString &bootIp, quint16 port);
-    void requestReboot(const QString &bootIp, quint16 port);
+    void requestAbort(const QString &bootIp, quint16 port, const QString &mac);
+    void requestReboot(const QString &bootIp, quint16 port, const QString &mac);
 
 private slots:
     void onSelectFile();
@@ -50,6 +50,7 @@ private:
 
     QLineEdit      *m_appIp;
     QLineEdit      *m_bootIp;
+    QLineEdit      *m_mac;
     QSpinBox       *m_port;
 
     QLineEdit      *m_file;

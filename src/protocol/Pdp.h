@@ -37,7 +37,9 @@ QList<Device> discover(const QString &nicIp, int timeoutMs = 1500);
 // Poll discovery until a bootloader (inBoot) matching `macStr` is found
 // (empty macStr = the sole bootloader). Returns true and fills `out`.
 bool findBootloader(const QString &nicIp, const QString &macStr,
-                    int timeoutMs, Device &out);
+                    int timeoutMs, Device &out, QString *error = nullptr);
+bool selectBootloader(const QList<Device> &devices, const QString &macStr,
+                      Device &out, QString *error = nullptr);
 
 // IDENTIFY whatever device currently answers at `ip`; return its MAC (or "").
 QString macForIp(const QString &nicIp, const QString &ip, int timeoutMs);

@@ -9,7 +9,7 @@
 
 #define APP_VERSION_MAJOR  1
 #define APP_VERSION_MINOR  3
-#define APP_VERSION_PATCH  14
+#define APP_VERSION_PATCH  15
 #define APP_VERSION_BUILD  0
 
 /* Comma form for FILEVERSION / PRODUCTVERSION in VERSIONINFO. */
@@ -19,7 +19,7 @@
  * windres does not reliably expand multi-part macro string literals,
  * so we keep this as a single quoted string. Update it together with
  * the three numeric defines above. */
-#define APP_VERSION_STR  "1.3.14.0"
-#define APP_PRODUCT_VER  "1.03.14"
+#define APP_VERSION_STR  "1.3.15.0"
+#define APP_PRODUCT_VER  "1.03.15"
 
 #endif /* APP_VERSION_H */

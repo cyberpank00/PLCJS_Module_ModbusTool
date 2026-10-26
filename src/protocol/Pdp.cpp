@@ -1,4 +1,5 @@
 #include "Pdp.h"
+#include "BootloaderProtocol.h"
 
 #include <QElapsedTimer>
 #include <QHostAddress>
@@ -6,6 +7,7 @@
 #include <QNetworkInterface>
 #include <QThread>
 #include <QUdpSocket>
+#include <QRandomGenerator>
 
 namespace pdp {
 namespace {
@@ -33,13 +35,15 @@ QByteArray buildHeader(quint8 opcode, quint16 txid, const QByteArray &mac6, quin
 Device parseIdentify(const QByteArray &buf)
 {
     Device d;
-    if (buf.size() < 16 || buf.left(4) != QByteArray("PLCD")) return d;
+    if (buf.size() != 54 || buf.left(4) != QByteArray("PLCD") || quint8(buf[4]) != kVer
+        || quint8(buf[14]) != 0 || quint8(buf[15]) != 38) return d;
     const quint8 opcode = quint8(buf[5]);
     if (opcode != (kOpIdentify | kResp)) return d;
     d.mac = buf.mid(8, 6);
     QStringList mp;
     for (unsigned char b : d.mac) mp << QString("%1").arg(b, 2, 16, QChar('0'));
-    d.macStr = mp.join(':');
+    d.macStr = boot::normalizeMac(mp.join(':'));
+    if (d.macStr.isEmpty()) { d.mac.clear(); return d; }
     const QByteArray p = buf.mid(16);
     if (p.size() < 38) { d.mac.clear(); return d; }
     const uchar *u = reinterpret_cast<const uchar *>(p.constData());
@@ -74,7 +78,8 @@ QList<Device> discover(const QString &nicIp, int timeoutMs)
     if (!nicIp.isEmpty()) tx.bind(QHostAddress(nicIp), 0);
     else tx.bind(QHostAddress::AnyIPv4, 0);
 
-    const QByteArray req = buildHeader(kOpIdentify, 0xF00D, QByteArray(), 0);
+    const quint16 txid = quint16(QRandomGenerator::global()->generate());
+    const QByteArray req = buildHeader(kOpIdentify, txid, QByteArray(), 0);
     sendBroadcast(tx, nicIp, req);
 
     QMap<QString, Device> found;
@@ -87,29 +92,56 @@ QList<Device> discover(const QString &nicIp, int timeoutMs)
                 buf.resize(int(rx.pendingDatagramSize()));
                 rx.readDatagram(buf.data(), buf.size());
                 const Device d = parseIdentify(buf);
-                if (!d.mac.isEmpty()) found.insert(d.macStr, d);
+                if (!d.mac.isEmpty() &&
+                    quint16((quint16(quint8(buf[6])) << 8) | quint8(buf[7])) == txid)
+                    found.insert(d.macStr, d);
             }
         }
     }
     return found.values();
 }
 
-bool findBootloader(const QString &nicIp, const QString &macStr, int timeoutMs, Device &out)
+bool selectBootloader(const QList<Device> &devices, const QString &macStr,
+                      Device &out, QString *error)
+{
+    if (error) error->clear();
+    const QString mac = boot::normalizeMac(macStr);
+    if (!macStr.isEmpty() && mac.isEmpty()) {
+        if (error) *error = QStringLiteral("Некорректный MAC.");
+        return false;
+    }
+    QList<Device> candidates;
+    for (const Device &d : devices)
+        if (d.inBoot && (mac.isEmpty() || d.macStr == mac)) candidates.append(d);
+    if (candidates.size() > 1) {
+        if (error) *error = QStringLiteral("Найдено несколько загрузчиков. Укажите MAC выбранного модуля.");
+        return false;
+    }
+    if (candidates.isEmpty()) return false;
+    const Device &selected = candidates.first();
+    for (const Device &d : devices) {
+        if (d.ip == selected.ip && d.macStr != selected.macStr) {
+            if (error) *error = QStringLiteral("Конфликт IP %1: назначьте модулям разные адреса.").arg(d.ip);
+            return false;
+        }
+    }
+    out = selected;
+    return true;
+}
+
+bool findBootloader(const QString &nicIp, const QString &macStr, int timeoutMs, Device &out, QString *error)
 {
     QElapsedTimer t;
     t.start();
     while (t.elapsed() < timeoutMs) {
-        QList<Device> bl;
-        for (const Device &d : discover(nicIp, 1500)) {
-            if (d.inBoot && (macStr.isEmpty() || d.macStr == macStr)) bl.append(d);
-        }
-        if (!macStr.isEmpty()) {
-            for (const Device &d : bl) if (d.macStr == macStr) { out = d; return true; }
-        } else if (bl.size() == 1) {
-            out = bl.first();
-            return true;
+        QString reason;
+        if (selectBootloader(discover(nicIp, 1500), macStr, out, &reason)) return true;
+        if (!reason.isEmpty()) {
+            if (error) *error = reason;
+            return false;
         }
     }
+    if (error) *error = QStringLiteral("Выбранный загрузчик не найден через PDP.");
     return false;
 }
 
@@ -118,8 +150,13 @@ QString macForIp(const QString &nicIp, const QString &ip, int timeoutMs)
     QElapsedTimer t;
     t.start();
     while (t.elapsed() < timeoutMs) {
-        for (const Device &d : discover(nicIp, 1500))
-            if (d.ip == ip) return d.macStr;
+        QString mac;
+        for (const Device &d : discover(nicIp, 1500)) {
+            if (d.ip != ip) continue;
+            if (!mac.isEmpty() && mac != d.macStr) return {};
+            mac = d.macStr;
+        }
+        if (!mac.isEmpty()) return mac;
     }
     return QString();
 }

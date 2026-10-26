@@ -48,6 +48,8 @@ enum InputReg : quint16 {
     IR_STAGING_VALID    = 0x0016,  // was 0x15
     IR_APP_PRODUCT_ID_HI = 0x0017, // installed app product_id (2 regs)
     IR_COUNT            = 0x0019,
+    IR_MAC              = 0x0019,
+    IR_COUNT_WITH_MAC   = 0x001C,
 };
 
 // ---- Holding registers (FC03/FC16, base 0x0000) -------------------------
@@ -97,10 +99,13 @@ struct Status {
     quint32 imageCrc    = 0;
     quint16 cmdStatus   = 0;
     quint16 stagingValid = 0;
+    QString mac;
 };
 
 // Parse a Status from an IR_COUNT-length register vector (read from 0x0000).
 Status parseStatus(const QVector<quint16> &regs);
+QString normalizeMac(const QString &mac);
+QString identityError(const Status &status, const QString &expectedMac);
 
 // ---- Parsed firmware-image header ---------------------------------------
 struct FwHeader {

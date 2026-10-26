@@ -24,6 +24,9 @@ FwUpdateTab::FwUpdateTab(QWidget *parent)
     // ---- Target / parameters --------------------------------------------
     m_appIp = new QLineEdit(QString::fromLatin1(boot::kDefaultAppIp));
     m_bootIp = new QLineEdit(QString::fromLatin1(boot::kDefaultBootIp));
+    m_mac = new QLineEdit;
+    m_mac->setPlaceholderText(QStringLiteral("02:00:xx:xx:xx:xx"));
+    m_mac->setToolTip(QStringLiteral("MAC выбранного модуля. Если поле пустое, допускается только один найденный загрузчик."));
     m_port = new QSpinBox;
     m_port->setRange(1, 65535);
     m_port->setValue(boot::kDefaultPort);
@@ -31,6 +34,7 @@ FwUpdateTab::FwUpdateTab(QWidget *parent)
     auto *paramForm = new QFormLayout(paramBox);
     paramForm->addRow(QStringLiteral("IP приложения:"), m_appIp);
     paramForm->addRow(QStringLiteral("IP загрузчика:"), m_bootIp);
+    paramForm->addRow(QStringLiteral("MAC модуля:"), m_mac);
     paramForm->addRow(QStringLiteral("Порт:"), m_port);
 
     // ---- File picker -----------------------------------------------------
@@ -146,6 +150,8 @@ FwUpdateTab::FwUpdateTab(QWidget *parent)
     // status use it.
     connect(m_worker, &FwWorker::bootIpResolved, this,
             [this](const QString &ip) { m_bootIp->setText(ip); });
+    connect(m_worker, &FwWorker::targetMacResolved, this,
+            [this](const QString &mac) { m_mac->setText(mac); });
 
     m_thread->start();
 }
@@ -203,7 +209,7 @@ void FwUpdateTab::onEnterBootloaderClicked()
 {
     setBusy(true);
     emit requestEnterBootloader(m_appIp->text().trimmed(), m_bootIp->text().trimmed(),
-                                quint16(m_port->value()));
+                                quint16(m_port->value()), m_mac->text());
 }
 
 void FwUpdateTab::onFlashClicked()
@@ -237,6 +243,7 @@ void FwUpdateTab::onFlashClicked()
     FwUpdateParams p;
     p.bootIp = m_bootIp->text().trimmed();
     p.appIp = m_appIp->text().trimmed();
+    p.mac = m_mac->text();
     p.port = quint16(m_port->value());
     p.filePath = m_file->text();
     // fwVersion, productId, hwRev are taken from the image's own fw_header_t
@@ -250,13 +257,13 @@ void FwUpdateTab::onFlashClicked()
 void FwUpdateTab::onAbortClicked()
 {
     setBusy(true);
-    emit requestAbort(m_bootIp->text().trimmed(), quint16(m_port->value()));
+    emit requestAbort(m_bootIp->text().trimmed(), quint16(m_port->value()), m_mac->text());
 }
 
 void FwUpdateTab::onRebootClicked()
 {
     setBusy(true);
-    emit requestReboot(m_bootIp->text().trimmed(), quint16(m_port->value()));
+    emit requestReboot(m_bootIp->text().trimmed(), quint16(m_port->value()), m_mac->text());
 }
 
 void FwUpdateTab::onLog(const QString &text)
@@ -313,6 +320,9 @@ void FwUpdateTab::onFinished(bool ok, const QString &summary)
 
 void FwUpdateTab::setBusy(bool busy)
 {
+    for (QLineEdit *edit : {m_appIp, m_bootIp, m_mac, m_file})
+        edit->setEnabled(!busy);
+    m_port->setEnabled(!busy);
     for (QPushButton *b : {m_statusBtn, m_bootBtn, m_flashBtn, m_abortBtn, m_rebootBtn, m_selectBtn})
         b->setEnabled(!busy);
 }

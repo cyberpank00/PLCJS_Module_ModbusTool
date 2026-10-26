@@ -10,6 +10,7 @@
 struct FwUpdateParams {
     QString bootIp;
     QString appIp;
+    QString mac;
     quint16 port = boot::kDefaultPort;
     QString filePath;
     // These three are compile-time constants defined in the bootloader.
@@ -32,10 +33,10 @@ public:
 
 public slots:
     void readStatus(const QString &ip, quint16 port);
-    void enterBootloader(const QString &appIp, const QString &bootIp, quint16 port);
+    void enterBootloader(const QString &appIp, const QString &bootIp, quint16 port, const QString &mac);
     void runUpdate(const FwUpdateParams &p);
-    void abort(const QString &bootIp, quint16 port);
-    void reboot(const QString &bootIp, quint16 port);
+    void abort(const QString &bootIp, quint16 port, const QString &mac);
+    void reboot(const QString &bootIp, quint16 port, const QString &mac);
 
 signals:
     void logMessage(const QString &text);
@@ -45,27 +46,30 @@ signals:
     // Emitted when the bootloader's IP is discovered/reassigned so the UI can
     // update its "boot IP" field for the follow-up flash.
     void bootIpResolved(const QString &ip);
+    void targetMacResolved(const QString &mac);
 
 private:
     // Poll IR_CMD_STATUS until it equals `expected` or hits ERROR/timeout.
     bool waitForStatus(class ModbusTcpClient &c, quint16 expected, int timeoutMs);
     // Wait until the bootloader answers at bootIp and is in WAIT_COMMAND.
-    bool waitForBootloaderReady(const QString &bootIp, quint16 port, int timeoutMs);
-    // True if a bootloader (magic) answers Modbus at ip:port.
-    bool isBootloaderReachable(const QString &ip, quint16 port);
+    bool waitForBootloaderReady(const QString &bootIp, quint16 port, int timeoutMs, const QString &mac);
+    // 1 = verified, 0 = no connection, -1 = connected but identity unverified.
+    int probeTarget(const QString &ip, quint16 port, const QString &mac);
+    bool verifyTarget(class ModbusTcpClient &c, const QString &mac, boot::Status *out = nullptr);
     // Resolve the bootloader's reachable IP: the bootloader now defaults to a
     // link-local address, so if `desiredIp` is silent, discover it by MAC (via
     // PDP) and, when it sits on a different subnet, reassign it live to
     // `desiredIp` with a discovery SET_NET. Returns "" on failure.
-    QString resolveBootIp(const QString &appIp, const QString &desiredIp, quint16 port);
+    QString resolveBootIp(const QString &appIp, const QString &desiredIp, quint16 port, QString &mac);
 
     // Outcome of the INSTALL command. The bootloader jumps straight into the
-    // application after installing, dropping the connection before it can
-    // report CMD_STATUS_OK, so a lost connection here means success.
-    enum class InstallOutcome { Installed, Rebooted, Failed };
+    // application after installing. A lost connection needs independent
+    // confirmation; it is not evidence of successful installation.
+    enum class InstallOutcome { Installed, Disconnected, Failed };
     InstallOutcome waitForInstall(class ModbusTcpClient &c, int timeoutMs);
     // Poll the application's Modbus map at appIp to confirm it came back up.
-    bool confirmAppRunning(const QString &appIp, quint16 port, int timeoutMs);
+    bool confirmAppRunning(const QString &appIp, quint16 port, int timeoutMs,
+                           const QString &mac, quint32 productId, quint32 fwVersion);
 };
 
 Q_DECLARE_METATYPE(FwUpdateParams)
