@@ -219,7 +219,7 @@ Save confirmation: after the SAVE trigger `OnlineTab::verifySave()` waits for th
 link to return (the module blocks on the Flash write and may re-apply the
 network), reads the written registers back and compares them, and — when the
 firmware has it — reads the save counter IR129 / last result IR130 (added in
-12DI 1.11, 12DQ 1.10, 4RTD 2.11, 8AIC 1.6, 8AOC 1.4; the counter advances only
+12DI 1.11, 12DO 1.11, 4RTD 2.11, 8AIC 1.6, 8AOC 1.4; the counter advances only
 after the Flash write and its read-back succeeded). Older firmware answers the
 IR129 read with an exception and the tool falls back to the register read-back.
 Write/save results go to the 5 s `m_notice` label next to the poll controls, not
