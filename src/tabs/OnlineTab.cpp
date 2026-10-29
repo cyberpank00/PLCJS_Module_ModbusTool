@@ -374,6 +374,10 @@ void OnlineTab::buildMapRows(const QVector<maps::RegEntry> &entries)
 
 void OnlineTab::onMapChanged(int)
 {
+    // A different module map means different registers: stop continuous reading
+    // (the toggled handler stops the timer and drops the kept-open connection).
+    if (m_continuous->isChecked())
+        m_continuous->setChecked(false);
     rebuildTable();
 }
 
