@@ -138,8 +138,9 @@ properties disagree with its title bar.
 Every bump changes the committed release exe name; replace the old exe in the
 same commit so exactly one release binary stays tracked.
 
-A chronological version-review / changelog file is planned; once it exists, add
-an entry there in the same commit as the bump.
+Changelog: every version bump also adds an entry (`DATE -- reason`, appended at the end)
+to the shared `CHANGELOG.md` / `CHANGELOG.txt` in the bootloader repo
+(`BOOTLOADER_PLCJS_ETH_MODULE_STM32F407VGT6`) - one file for all repos.
 
 ### Protocol fidelity
 `Pdp.cpp` and `BootloaderProtocol.cpp` are ports, not shared code. They must
