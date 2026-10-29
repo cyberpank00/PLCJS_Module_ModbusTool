@@ -61,7 +61,9 @@ private:
 
     void rebuildTable();
     void buildFreeRows();
-    void verifySave(const QVector<RegExpect> &expect);
+    // countBefore: firmware save counter (IR129) read just before the trigger,
+    // or -1 when the firmware has no such register (older builds).
+    void verifySave(const QVector<RegExpect> &expect, int countBefore);
     void buildMapRows(const QVector<maps::RegEntry> &entries);
     QSpinBox *addrSpin(int row) const;
     QLineEdit *writeEdit(int row) const;

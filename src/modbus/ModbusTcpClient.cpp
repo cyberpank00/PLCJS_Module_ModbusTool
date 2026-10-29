@@ -122,13 +122,13 @@ bool ModbusTcpClient::request(const QByteArray &pdu, QByteArray &respPdu)
 
         const int remaining = m_timeoutMs - int(timer.elapsed());
         if (remaining <= 0) {
-            m_lastError = QStringLiteral("Таймаут ответа (txId=%1)").arg(m_txId);
+            m_lastError = QStringLiteral("Таймаут ответа (txId=%1) — если TCP подключается, а ответа нет, проверьте VPN/TUN-клиент: он может перехватывать локальную подсеть").arg(m_txId);
             m_transportError = true;
             return false;
         }
         if (!m_sock->waitForReadyRead(remaining)) {
             if (m_sock->bytesAvailable() > 0) continue;   /* raced with the drain */
-            m_lastError = QStringLiteral("Таймаут чтения: %1").arg(m_sock->errorString());
+            m_lastError = QStringLiteral("Таймаут чтения: %1 — если TCP подключается, а ответа нет, проверьте VPN/TUN-клиент: он может перехватывать локальную подсеть").arg(m_sock->errorString());
             m_transportError = true;
             return false;
         }

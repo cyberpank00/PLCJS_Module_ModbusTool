@@ -47,6 +47,14 @@ void floatToRegs(float f, quint16 &hi, quint16 &lo)
 
 constexpr quint16 kSaveTrigAddr  = 117;
 constexpr quint16 kSaveTrigValue = 0xA5A5;
+constexpr quint16 kSaveCountAddr = 129;   // IR129 count, IR130 last result (0 none / 1 ok / 2 failed)
+
+// Firmware save counter, or -1 if the module does not provide it.
+int readSaveCount(ModbusTcpClient &c)
+{
+    QVector<quint16> r;
+    return (c.readInputRegisters(kSaveCountAddr, 2, r) && r.size() == 2) ? int(r[0]) : -1;
+}
 
 // Action registers (save/reboot/boot/factory/KSZ reset/calibration commit and
 // erase arm) are write-only triggers: they never read back as written.
@@ -449,13 +457,14 @@ void OnlineTab::writeMagic(quint16 addr, quint16 value, const QString &label, bo
             }
         }
     }
+    const int countBefore = isSave ? readSaveCount(*c) : -1;
     if (!c->writeSingleRegister(addr, value)) {
         setNotice(QStringLiteral("%1: %2").arg(label).arg(c->lastError()), true);
         return;
     }
     if (isSave) {
         oneShot.reset();
-        verifySave(snapshot);
+        verifySave(snapshot, countBefore);
         return;
     }
     setNotice(QStringLiteral("%1: HR%2 ← 0x%3 (%4) записано")
@@ -668,13 +677,14 @@ void OnlineTab::onWrite()
             setNotice(QStringLiteral("Строка %1: неверное значение '%2'").arg(saveRow + 1).arg(text), true);
             return;
         }
+        const int countBefore = readSaveCount(c);
         if (!c.writeSingleRegister(kSaveTrigAddr, quint16(value))) {
             setNotice(QStringLiteral("Строка %1: %2").arg(saveRow + 1).arg(c.lastError()), true);
             return;
         }
         ++written;
         c.close();
-        verifySave(expect);
+        verifySave(expect, countBefore);
         return;
     }
 
@@ -685,7 +695,7 @@ void OnlineTab::onWrite()
 // the network config, dropping the link for a moment. Wait for it to come back,
 // then read the written registers back and compare. Note this proves the module
 // is alive and holds the values; it does not read Flash itself.
-void OnlineTab::verifySave(const QVector<RegExpect> &expect)
+void OnlineTab::verifySave(const QVector<RegExpect> &expect, int countBefore)
 {
     setNotice(QStringLiteral("Сохранение настроек…"));
     auto pause = [](int ms) {
@@ -726,6 +736,25 @@ void OnlineTab::verifySave(const QVector<RegExpect> &expect)
     if (!bad.isEmpty()) {
         setNotice(QStringLiteral("Сохранение: расхождение после записи — %1").arg(bad.join(QStringLiteral(", "))), true);
         return;
+    }
+    if (countBefore >= 0) {
+        // Firmware confirmation: the counter advances only after the Flash write
+        // and its read-back succeeded (IR129), IR130 holds the last result.
+        QVector<quint16> r;
+        if (c->readInputRegisters(kSaveCountAddr, 2, r) && r.size() == 2) {
+            if (r[1] == 2) {
+                setNotice(QStringLiteral("Сохранение НЕ выполнено: ошибка записи во Flash"), true);
+                return;
+            }
+            if (int(r[0]) <= countBefore) {
+                setNotice(QStringLiteral("Сохранение не подтверждено: счётчик прошивки не изменился (%1)")
+                              .arg(r[0]), true);
+                return;
+            }
+            setNotice(QStringLiteral("Сохранено во Flash (счётчик %1 → %2), регистров сверено: %3")
+                          .arg(countBefore).arg(r[0]).arg(expect.size()), false);
+            return;
+        }
     }
     setNotice(QStringLiteral("Сохранено, проверено регистров: %1").arg(expect.size()), false);
 }

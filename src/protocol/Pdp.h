@@ -45,8 +45,12 @@ bool selectBootloader(const QList<Device> &devices, const QString &macStr,
 QString macForIp(const QString &nicIp, const QString &ip, int timeoutMs);
 
 // Broadcast a SET_NET (static) command to `macStr`, re-sent for reliability.
-void setNetStatic(const QString &nicIp, const QString &macStr,
-                  const QString &ip, const QString &mask, const QString &gw);
+// Waits up to `waitMs` for the device's answer (the firmware answers after its
+// ~1 s address probe) and returns its status byte: 0 = applied, 1 = refused
+// (address already in use / device busy), -1 = no answer.
+int setNetStatic(const QString &nicIp, const QString &macStr,
+                 const QString &ip, const QString &mask, const QString &gw,
+                 int waitMs = 2500);
 
 // Local IPv4 address on the same subnet as `peerIp` (to bind the broadcast
 // socket on a multi-homed host). Empty if none matches.

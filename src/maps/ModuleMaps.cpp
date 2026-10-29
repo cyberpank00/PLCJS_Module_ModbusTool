@@ -33,6 +33,17 @@ QString decodeLedMode(quint16 v)
     }
 }
 
+// IR130 on every module: result of the last settings save since boot.
+QString decodeSaveResult(quint16 v)
+{
+    switch (v) {
+    case 0: return QStringLiteral("сохранений не было");
+    case 1: return QStringLiteral("успешно (Flash + read-back)");
+    case 2: return QStringLiteral("ОШИБКА записи");
+    default: return QStringLiteral("?");
+    }
+}
+
 QString decodeModuleId(quint16 v)
 {
     switch (v) {
@@ -250,6 +261,8 @@ QVector<RegEntry> build12DI()
     e.push_back(T{QStringLiteral("Uptime, с (high)"), 123, RegEntry::Input, false, nullptr, {}});
     e.push_back(T{QStringLiteral("Маска DI (12 бит)"), 124, RegEntry::Input, false, decodeDiMask, {}});
     e.push_back(T{QStringLiteral("Module ID"),         125, RegEntry::Input, false, decodeModuleId, {}});
+    e.push_back(T{QStringLiteral("Счётчик сохранений настроек"), 129, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Результат последнего сохранения"), 130, RegEntry::Input, false, decodeSaveResult, {}});
 
     // Holding registers (FC03/FC06, read/write unless noted).
     e.push_back(T{QStringLiteral("Фильтр DI, мс"),     100, RegEntry::Holding, true, decodeFilterMs, QStringLiteral("10..1000")});
@@ -288,6 +301,8 @@ QVector<RegEntry> build12DO()
     e.push_back(T{QStringLiteral("Uptime, с (high)"), 123, RegEntry::Input, false, nullptr, {}});
     e.push_back(T{QStringLiteral("Маска DQ (12 бит)"), 124, RegEntry::Input, false, decodeDqMask, {}});
     e.push_back(T{QStringLiteral("Module ID"),         125, RegEntry::Input, false, decodeModuleId, {}});
+    e.push_back(T{QStringLiteral("Счётчик сохранений настроек"), 129, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Результат последнего сохранения"), 130, RegEntry::Input, false, decodeSaveResult, {}});
 
     // Discrete-output control block (holding, read/write).
     e.push_back(T{QStringLiteral("Групповой выход (маска)"), 50, RegEntry::Holding, true, decodeDqMask, QStringLiteral("битовая маска DQ")});
@@ -366,6 +381,8 @@ QVector<RegEntry> build4RTD()
     e.push_back(T{QStringLiteral("Температура чипа"),  126, RegEntry::Input, false, decodeDeciCelsius, {}});
     e.push_back(T{QStringLiteral("Блокировка калибровки (слоты 0..15)"), 127, RegEntry::Input, false, decodeCalLock, {}});
     e.push_back(T{QStringLiteral("Блокировка калибровки (слоты 16..19)"), 128, RegEntry::Input, false, decodeCalLockHi, {}});
+    e.push_back(T{QStringLiteral("Счётчик сохранений настроек"), 129, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Результат последнего сохранения"), 130, RegEntry::Input, false, decodeSaveResult, {}});
 
     // Global holding registers.
     e.push_back(T{QStringLiteral("Период опроса RTD, мс"), 100, RegEntry::Holding, true, decodeFilterMs, QStringLiteral("50..5000")});
@@ -489,6 +506,8 @@ QVector<RegEntry> build8AIC()
     e.push_back(T{QStringLiteral("Module ID"),        125, RegEntry::Input, false, decodeModuleId, {}});
     e.push_back(T{QStringLiteral("Температура чипа"),  126, RegEntry::Input, false, decodeDeciCelsius, {}});
     e.push_back(T{QStringLiteral("Блокировка калибровки"), 127, RegEntry::Input, false, decodeAicCalLock, {}});
+    e.push_back(T{QStringLiteral("Счётчик сохранений настроек"), 129, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Результат последнего сохранения"), 130, RegEntry::Input, false, decodeSaveResult, {}});
 
     // Global holding registers.
     e.push_back(T{QStringLiteral("Период опроса, мс"), 100, RegEntry::Holding, true, decodeFilterMs, QStringLiteral("50..5000")});
@@ -604,6 +623,8 @@ QVector<RegEntry> build8AOC()
     e.push_back(T{QStringLiteral("Module ID"),        125, RegEntry::Input, false, decodeModuleId, {}});
     e.push_back(T{QStringLiteral("Температура чипа"),  126, RegEntry::Input, false, decodeDeciCelsius, {}});
     e.push_back(T{QStringLiteral("Блокировка калибровки"), 127, RegEntry::Input, false, decodeAicCalLock, {}});
+    e.push_back(T{QStringLiteral("Счётчик сохранений настроек"), 129, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Результат последнего сохранения"), 130, RegEntry::Input, false, decodeSaveResult, {}});
 
     // Global holding registers.
     e.push_back(T{QStringLiteral("Таймаут потери связи, ×100 мс"), 100, RegEntry::Holding, true, decodeAocTimeout, QStringLiteral("0=выкл, 1..6000 (деф. 50)")});

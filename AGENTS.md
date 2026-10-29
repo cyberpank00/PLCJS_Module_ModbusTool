@@ -215,6 +215,23 @@ The write field parses **decimal by default, hex only with a `0x` prefix**;
 that is why every magic hint spells out the decimal value. HR131 (calibration
 COMMIT) deliberately has no button: it needs a slot number and is irreversible.
 
+Save confirmation: after the SAVE trigger `OnlineTab::verifySave()` waits for the
+link to return (the module blocks on the Flash write and may re-apply the
+network), reads the written registers back and compares them, and — when the
+firmware has it — reads the save counter IR129 / last result IR130 (added in
+12DI 1.11, 12DQ 1.10, 4RTD 2.11, 8AIC 1.6, 8AOC 1.4; the counter advances only
+after the Flash write and its read-back succeeded). Older firmware answers the
+IR129 read with an exception and the tool falls back to the register read-back.
+Write/save results go to the 5 s `m_notice` label next to the poll controls, not
+to the status line that every poll cycle overwrites.
+
+PDP `SET_NET`: `pdp::setNetStatic()` returns the device's status (0 applied, 1
+refused, -1 no answer). Firmware (bootloader 1.9, apps above) probes the address
+with ARP before applying it and answers after ~1 s, so callers must wait; status 1
+means the address is in use (PC, PLC or another module) or the device is busy.
+`DiscoveryTab::onApplyNet()` also rejects an address already shown in the
+discovery table, and `FwWorker` refuses one owned by another PDP device.
+
 Enumerated holding registers (sensor type, LED mode, net mode, smoothing, gain
 override, alpha mode, enable/DQ 0-1, comms-loss mode, ADC rate) get a
 drop-down instead of a text field. `attachChoices()` in `ModuleMaps.cpp` builds

@@ -82,7 +82,11 @@ QString FwWorker::resolveBootIp(const QString &appIp, const QString &desiredIp, 
     if (atDesired < 0) return {};
     emit logMessage(QStringLiteral("  %1 недоступен напрямую; назначаю %2 через SET_NET...")
                         .arg(dev.ip, desiredIp));
-    pdp::setNetStatic(nic, dev.macStr, desiredIp, QStringLiteral("255.255.255.0"), gw);
+    if (pdp::setNetStatic(nic, dev.macStr, desiredIp, QStringLiteral("255.255.255.0"), gw) == 1) {
+        emit logMessage(QStringLiteral("SET_NET отклонён: адрес %1 уже используется в сети "
+                                       "(проверка ARP) или загрузчик занят.").arg(desiredIp));
+        return {};
+    }
     QElapsedTimer t;
     t.start();
     while (t.elapsed() < 8000) {

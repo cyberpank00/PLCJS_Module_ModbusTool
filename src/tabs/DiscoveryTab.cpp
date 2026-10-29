@@ -319,6 +319,12 @@ void DiscoveryTab::onRxReady()
         } else {
             // Command ack (SET_NET/SET_NAME/FLASH_LED/REBOOT/FACTORY).
             const quint8 status = (buf.size() > plStart) ? u8(plStart) : 0xFF;
+            if (opcode == (kOpSetNet | kRespFlag) && status == 1) {
+                setStatus(QString("%1: SET_NET отклонён — адрес уже используется в сети "
+                                  "(проверка ARP) или устройство занято")
+                              .arg(macToStr(mac)), true);
+                continue;
+            }
             setStatus(QString("%1: ответ 0x%2 статус %3")
                           .arg(macToStr(mac))
                           .arg(opcode, 2, 16, QChar('0'))
@@ -413,6 +419,15 @@ void DiscoveryTab::onApplyNet()
             !parseIpv4(m_gw->text(), gw)) {
             setStatus(QStringLiteral("Неверный формат IP/маски/шлюза"), true);
             return;
+        }
+        // Cheap pre-check against the last discovery; the firmware additionally
+        // probes the address on the wire (covers hosts that do not speak PDP).
+        for (const Device &other : std::as_const(m_devices)) {
+            if (other.mac != mac && other.ip == m_ip->text().trimmed()) {
+                setStatus(QString("Адрес %1 уже занят устройством %2 (по таблице обнаружения)")
+                              .arg(other.ip, macToStr(other.mac)), true);
+                return;
+            }
         }
         for (int i = 0; i < 4; ++i) pl.append(char(ip[i]));
         for (int i = 0; i < 4; ++i) pl.append(char(mk[i]));

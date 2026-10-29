@@ -161,8 +161,8 @@ QString macForIp(const QString &nicIp, const QString &ip, int timeoutMs)
     return QString();
 }
 
-void setNetStatic(const QString &nicIp, const QString &macStr,
-                  const QString &ip, const QString &mask, const QString &gw)
+int setNetStatic(const QString &nicIp, const QString &macStr,
+                 const QString &ip, const QString &mask, const QString &gw, int waitMs)
 {
     QByteArray mac6;
     for (const QString &h : macStr.split(':')) mac6.append(char(h.toInt(nullptr, 16)));
@@ -175,14 +175,38 @@ void setNetStatic(const QString &nicIp, const QString &macStr,
 
     const QByteArray f = buildHeader(kOpSetNet, 0x5E70, mac6, quint16(payload.size())) + payload;
 
+    QUdpSocket rx;
+    const bool listening = rx.bind(QHostAddress::AnyIPv4, kPort,
+                                   QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
     QUdpSocket tx;
     if (!nicIp.isEmpty()) tx.bind(QHostAddress(nicIp), 0);
     else tx.bind(QHostAddress::AnyIPv4, 0);
-    for (int i = 0; i < 2; ++i) {
-        sendBroadcast(tx, nicIp, f);
-        tx.waitForBytesWritten(200);
-        QThread::msleep(200);
+
+    QElapsedTimer t;
+    t.start();
+    int status = -1;
+    int sent = 0;
+    while (t.elapsed() < waitMs && status < 0) {
+        if (sent < 2 && t.elapsed() >= sent * 300) {
+            sendBroadcast(tx, nicIp, f);
+            tx.waitForBytesWritten(200);
+            ++sent;
+        }
+        if (!listening) { QThread::msleep(50); continue; }
+        if (rx.waitForReadyRead(50)) {
+            while (rx.hasPendingDatagrams()) {
+                QByteArray buf;
+                buf.resize(int(rx.pendingDatagramSize()));
+                rx.readDatagram(buf.data(), buf.size());
+                if (buf.size() >= 17 && buf.left(4) == QByteArray("PLCD") &&
+                    quint8(buf[5]) == (kOpSetNet | kResp) &&
+                    quint8(buf[6]) == 0x5E && quint8(buf[7]) == 0x70 &&
+                    buf.mid(8, 6) == mac6)
+                    status = quint8(buf[16]);
+            }
+        }
     }
+    return status;
 }
 
 QString nicForPeer(const QString &peerIp)
