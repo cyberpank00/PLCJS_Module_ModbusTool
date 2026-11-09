@@ -52,6 +52,7 @@ QString decodeModuleId(quint16 v)
     case 0x04D1: return QStringLiteral("4RTD");
     case 0x08AC: return QStringLiteral("8AIC");
     case 0x08A0: return QStringLiteral("8AOC");
+    case 0x08A7: return QStringLiteral("8UAI");
     case 0x04DD: return QStringLiteral("4RD");
     default: return QStringLiteral("0x%1").arg(v, 4, 16, QChar('0')).toUpper();
     }
@@ -660,6 +661,168 @@ QVector<RegEntry> build8AOC()
     return e;
 }
 
+// ---- 8UAI map (8 universal analog inputs, ADS8688 + key chain) ---------------
+// Mirrors Application/modbus/modbus_app.h of PLCJS_ETH_MODULE_8UAI (fw 1.1).
+// The RTD/KTY table bodies (1000 + ch*128, 512 floats) are not listed: the
+// Online tab reads row by row, so they would slow every poll cycle. Use the
+// free-address mode for them (write the points with "точек" = 0, then set the
+// point count).
+QString decodeUaiMode(quint16 v)
+{
+    static const char *kNames[] = {
+        "OFF", "V 0-10", "V 2-10", "I 0-20", "I 4-20",
+        "PT1000", "KTY (таблица)", "RTD таблица", "NTC", "DI",
+    };
+    return v < (sizeof(kNames) / sizeof(kNames[0])) ? QString::fromUtf8(kNames[v]) : QStringLiteral("?");
+}
+
+QString decodeUaiReading(quint16 v)
+{
+    const qint16 s = qint16(v);
+    if (s == -32768) return QStringLiteral("нет данных");
+    return QStringLiteral("%1 (0.1 °C / мВ / мкА / 0-1 по режиму)").arg(s);
+}
+
+QString decodeNtcModel(quint16 v)
+{
+    switch (v) {
+    case 0: return QStringLiteral("B-параметр");
+    case 1: return QStringLiteral("Стейнхарт–Харт");
+    default: return QStringLiteral("?");
+    }
+}
+
+QString decodeUaiStatus(quint16 v)
+{
+    static const char *kBits[] = {
+        "NO_DATA", "OVERRANGE", "UNDERRANGE", "WIRE_BREAK", "SHORT", "OVERLOAD",
+        "EXT_VOLTAGE", "LOCKED", "NEG_INPUT", "ADC_CLIP", "OUT_OF_TABLE",
+        "CONFIG_ERR", "ADC_FAIL", "INTERNAL", "OFF",
+    };
+    QStringList parts;
+    for (int i = 0; i < 15; ++i)
+        if ((v >> i) & 1u) parts << QString::fromUtf8(kBits[i]);
+    return parts.isEmpty() ? QStringLiteral("OK") : parts.join(QStringLiteral(", "));
+}
+
+QString decodeUaiState(quint16 v)
+{
+    static const char *kNames[] = { "OFF", "PRECHECK", "READY", "RUN", "RETRY", "LOCKED", "ADC_FAIL" };
+    return v < 7 ? QString::fromUtf8(kNames[v]) : QStringLiteral("?");
+}
+
+QString decodeUaiModuleFlags(quint16 v)
+{
+    QStringList parts;
+    if (v & 0x0001u) parts << QStringLiteral("ADC_FAIL");
+    if (v & 0x0002u) parts << QStringLiteral("CONFIG_ERR");
+    if (v & 0x0004u) parts << QStringLiteral("опрос идёт");
+    if (v & 0x0008u) parts << QStringLiteral("watchdog 25 мс");
+    if (v & 0x0010u) parts << QStringLiteral("внутренняя ошибка");
+    return parts.isEmpty() ? QStringLiteral("—") : parts.join(QStringLiteral(", "));
+}
+
+QVector<RegEntry> build8UAI()
+{
+    using T = RegEntry;
+    QVector<RegEntry> e;
+
+    // Compact holding block 0..63: group*8 + ch.
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 показание int16").arg(ch + 1), quint16(0 + ch), RegEntry::Holding, false, decodeUaiReading, {}});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 режим").arg(ch + 1), quint16(8 + ch), RegEntry::Holding, true, decodeUaiMode, QStringLiteral("0..9, смена режима = перезапуск канала через PRECHECK")});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 фильтр EMA, мс").arg(ch + 1), quint16(16 + ch), RegEntry::Holding, true, decodeFilterMs, QStringLiteral("0 = выкл")});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 R линии, мОм").arg(ch + 1), quint16(24 + ch), RegEntry::Holding, true, nullptr, QStringLiteral("оба провода, 0..65535")});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 модель NTC").arg(ch + 1), quint16(32 + ch), RegEntry::Holding, true, decodeNtcModel, QStringLiteral("0=B 1=SH")});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 DI порог «1», Ом").arg(ch + 1), quint16(40 + ch), RegEntry::Holding, true, nullptr, QStringLiteral("< порога «0» (деф. 1000)")});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 DI порог «0», Ом").arg(ch + 1), quint16(48 + ch), RegEntry::Holding, true, nullptr, QStringLiteral("> порога «1» (деф. 5000)")});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 точек таблицы RTD/KTY").arg(ch + 1), quint16(56 + ch), RegEntry::Holding, true, nullptr, QStringLiteral("0..32; таблица: свободный режим, 1000+ch*128")});
+
+    // Readings (input registers 300..363), grouped by quantity.
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 значение").arg(ch + 1), quint16(300 + ch * 2), RegEntry::Input, false, nullptr, {}, RegEntry::F32});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 raw (Ом / В / мА)").arg(ch + 1), quint16(316 + ch * 2), RegEntry::Input, false, nullptr, {}, RegEntry::F32});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 статус").arg(ch + 1), quint16(332 + ch), RegEntry::Input, false, decodeUaiStatus, {}});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 счётчик обновлений").arg(ch + 1), quint16(340 + ch), RegEntry::Input, false, nullptr, {}});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 срабатываний защиты").arg(ch + 1), quint16(348 + ch), RegEntry::Input, false, nullptr, {}});
+    for (int ch = 0; ch < 8; ++ch)
+        e.push_back(T{QStringLiteral("Кан.%1 состояние").arg(ch + 1), quint16(356 + ch), RegEntry::Input, false, decodeUaiState, {}});
+
+    // Global input registers.
+    e.push_back(T{QStringLiteral("Версия FW (major)"), 120, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Версия FW (minor)"), 121, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Uptime, с (low)"),  122, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Uptime, с (high)"), 123, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Module ID"),        125, RegEntry::Input, false, decodeModuleId, {}});
+    e.push_back(T{QStringLiteral("Температура чипа"),  126, RegEntry::Input, false, decodeDeciCelsius, {}});
+    e.push_back(T{QStringLiteral("Флаги модуля"),      127, RegEntry::Input, false, decodeUaiModuleFlags, {}});
+    e.push_back(T{QStringLiteral("Отсчётов на канал за фазу"), 128, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Счётчик сохранений настроек"), 129, RegEntry::Input, false, nullptr, {}});
+    e.push_back(T{QStringLiteral("Результат последнего сохранения"), 130, RegEntry::Input, false, decodeSaveResult, {}});
+
+    // Global holding registers.
+    e.push_back(T{QStringLiteral("Режим LED"),         101, RegEntry::Holding, true, decodeLedMode, QStringLiteral("0=OFF 1=ON 2=SM")});
+    e.push_back(T{QStringLiteral("Modbus slave id"),   102, RegEntry::Holding, true, nullptr, QStringLiteral("1..247")});
+    e.push_back(T{QStringLiteral("Modbus TCP порт"),   103, RegEntry::Holding, true, nullptr, QStringLiteral(">0")});
+    for (int i = 0; i < 4; ++i)
+        e.push_back(T{QStringLiteral("IP октет %1").arg(i + 1), quint16(104 + i), RegEntry::Holding, true, nullptr, QStringLiteral("0..255")});
+    for (int i = 0; i < 4; ++i)
+        e.push_back(T{QStringLiteral("Netmask октет %1").arg(i + 1), quint16(108 + i), RegEntry::Holding, true, nullptr, QStringLiteral("0..255")});
+    for (int i = 0; i < 4; ++i)
+        e.push_back(T{QStringLiteral("Gateway октет %1").arg(i + 1), quint16(112 + i), RegEntry::Holding, true, nullptr, QStringLiteral("0..255")});
+    e.push_back(T{QStringLiteral("Сетевой режим"), 116, RegEntry::Holding, true, decodeNetMode, QStringLiteral("0=static 1=DHCP 2=link-local")});
+    e.push_back(T{QStringLiteral("Сохранить (trigger)"),      117, RegEntry::Holding, true, nullptr, QStringLiteral("0xA5A5")});
+    e.push_back(T{QStringLiteral("Сервисные команды (trigger)"), 118, RegEntry::Holding, true, nullptr, QStringLiteral("0xB00B reboot / 0xB007 boot / 0x8863 KSZ reset")});
+    e.push_back(T{QStringLiteral("Сброс к заводским (trig.)"), 119, RegEntry::Holding, true, nullptr, QStringLiteral("0xDEAD")});
+    e.push_back(T{QStringLiteral("Температура чипа (HR)"), 130, RegEntry::Holding, false, decodeDeciCelsius, {}});
+    e.push_back(T{QStringLiteral("Команда канала"), 131, RegEntry::Holding, true, nullptr,
+                  QStringLiteral("0xA100+ch = %1+ch UNLOCK  |  0xA200+ch = %2+ch RESTART  |  0xA300 = %3 APPLY (ch 0..7)")
+                      .arg(0xA100).arg(0xA200).arg(0xA300)});
+    e.push_back(T{QStringLiteral("Частота сети, Гц"), 133, RegEntry::Holding, true, nullptr, QStringLiteral("50 / 60")});
+    e.push_back(T{QStringLiteral("T_BLANK, мкс"),     134, RegEntry::Holding, true, nullptr, QStringLiteral("200..10000 (деф. 1500)")});
+
+    // Per-channel float parameters (holding float32, base 540 + ch*16).
+    static const char *kFloatNames[] = {
+        "Pt R0, Ом", "NTC R25, Ом", "NTC B, K", "NTC SH a", "NTC SH b", "NTC SH c",
+        "шкала: нижнее значение", "шкала: верхнее значение",
+    };
+    for (int ch = 0; ch < 8; ++ch)
+        for (int i = 0; i < 8; ++i)
+            e.push_back(T{QStringLiteral("Кан.%1 %2").arg(ch + 1).arg(QString::fromUtf8(kFloatNames[i])),
+                          quint16(540 + ch * 16 + i * 2), RegEntry::Holding, true, nullptr,
+                          i >= 6 ? QStringLiteral("float; V/I, нижнее = верхнее -> физ. единицы") : QStringLiteral("float"),
+                          RegEntry::F32});
+
+    // Service: input-node model and diagnostic thresholds (holding float32).
+    static const char *kModel[] = {
+        "V_REF, В", "R_REF, Ом", "R_DS1, Ом", "R_SH, Ом", "R_DS2, Ом", "R_7, Ом", "R_IN, Ом",
+        "V_B ±10.24 В", "V_B ±5.12 В", "V_B ±2.56 В", "V_B 0..10.24 В", "V_B 0..5.12 В",
+    };
+    for (int i = 0; i < 12; ++i)
+        e.push_back(T{QStringLiteral("Сервис: %1").arg(QString::fromUtf8(kModel[i])), quint16(700 + i * 2),
+                      RegEntry::Holding, true, nullptr, QStringLiteral("float"), RegEntry::F32});
+    static const char *kDiag[] = {
+        "RTD обрыв, Ом", "RTD КЗ, Ом", "NTC обрыв, Ом", "NTC КЗ, Ом", "V2-10 обрыв, В",
+        "V превышение, В", "V отрицательное, В", "I4-20 обрыв, мА", "I превышение, мА",
+    };
+    for (int i = 0; i < 9; ++i)
+        e.push_back(T{QStringLiteral("Диагностика: %1").arg(QString::fromUtf8(kDiag[i])), quint16(730 + i * 2),
+                      RegEntry::Holding, true, nullptr, QStringLiteral("float"), RegEntry::F32});
+
+    return e;
+}
+
 } // namespace
 
 // ---- Public API ------------------------------------------------------------
@@ -671,6 +834,7 @@ QVector<QString> mapNames()
         QStringLiteral("4RTD"),
         QStringLiteral("8AIC"),
         QStringLiteral("8AOC"),
+        QStringLiteral("8UAI"),
     };
 }
 
@@ -682,6 +846,7 @@ MapId mapIdForIndex(int index)
     case 2:  return MapId::M4RTD;
     case 3:  return MapId::M8AIC;
     case 4:  return MapId::M8AOC;
+    case 5:  return MapId::M8UAI;
     default: return MapId::M12DI;
     }
 }
@@ -753,6 +918,7 @@ void attachChoices(QVector<RegEntry> &e)
         {decodeDqState, 1},     {decodeDqLossMode, 2},  {decodeRtdType, 20},
         {decodeAlphaMode, 1},   {decodeCalRange, 5},    {decodeSmoothing, 3},
         {decodeAicRate, 2},     {decodeAocLossMode, 2},
+        {decodeUaiMode, 9},     {decodeNtcModel, 1},
     };
     for (RegEntry &r : e) {
         if (r.type != RegEntry::Holding || !r.writable || r.fmt != RegEntry::U16 || !r.decode)
@@ -777,6 +943,7 @@ QVector<RegEntry> entriesFor(MapId id)
     case MapId::M4RTD: e = build4RTD(); break;
     case MapId::M8AIC: e = build8AIC(); break;
     case MapId::M8AOC: e = build8AOC(); break;
+    case MapId::M8UAI: e = build8UAI(); break;
     case MapId::Free:  return {};
     }
     attachStandardActions(e, id == MapId::M8AOC);

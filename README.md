@@ -87,6 +87,7 @@ Windows-утилита на **Qt 6 Widgets / C++17** для модулей се�
 - **4RTD**
 - **8AIC**
 - **8AOC**
+- **8UAI** (таблицы RTD/KTY — через свободный режим, адреса `1000 + канал·128`)
 
 Важно:
 
@@ -219,6 +220,7 @@ New-NetFirewallRule -DisplayName "PLCJS PDP discovery" -Direction Inbound `
 - **4RTD**
 - **8AIC**
 - **8AOC**
+- **8UAI** (таблицы RTD/KTY — через свободный режим, адреса `1000 + канал·128`)
 
 ## Ограничения
 

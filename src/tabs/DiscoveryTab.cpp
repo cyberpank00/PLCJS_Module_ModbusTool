@@ -58,6 +58,7 @@ QString productName(quint32 id)
     case 0x504C1201u: return QStringLiteral("12DI");
     case 0x504C1202u: return QStringLiteral("12DO");
     case 0x504C0403u: return QStringLiteral("4RTD");
+    case 0x504C0807u: return QStringLiteral("8UAI");
     default: return QString("0x%1").arg(id, 8, 16, QChar('0')).toUpper();
     }
 }

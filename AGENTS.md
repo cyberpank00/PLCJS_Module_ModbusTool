@@ -105,7 +105,7 @@ identical.
 | `tabs/OnlineTab.*` | Register browser. "Карта модуля" selector switches between named per-module maps. |
 | `tabs/FwUpdateTab.*` | Firmware-update UI (pick `.bin`, addresses, progress, log). |
 | `tabs/FwWorker.*` | The OTA state machine, run off the GUI thread. |
-| `maps/ModuleMaps.*` | Named register maps — `build12DI()`, `build12DO()`, `build4RTD()`, `build8AIC()`, `build8AOC()`. |
+| `maps/ModuleMaps.*` | Named register maps — `build12DI()`, `build12DO()`, `build4RTD()`, `build8AIC()`, `build8AOC()`, `build8UAI()`. |
 | `protocol/Pdp.*` | PLCJS Discovery Protocol client (UDP/20556 broadcast). |
 | `protocol/BootloaderProtocol.*` | Bootloader OTA register interface. |
 | `modbus/ModbusTcpClient.*` | Minimal Modbus TCP client over `QTcpSocket`. |
@@ -202,7 +202,7 @@ That needs a `geoip:private → direct` rule in the VPN client.
 plausible-looking garbage rather than an error.
 
 Module IDs decoded in `ModuleMaps.cpp` (IR125): `0x12D1` 12DI, `0x12D0` 12DO,
-`0x04D1` 4RTD, `0x08AC` 8AIC, `0x08A0` 8AOC, `0x04DD` 4RD. These must match `MODULE_ID_*` in each firmware's
+`0x04D1` 4RTD, `0x08AC` 8AIC, `0x08A0` 8AOC, `0x08A7` 8UAI, `0x04DD` 4RD. These must match `MODULE_ID_*` in each firmware's
 `modbus_app.h`.
 
 When a firmware's register map changes, the corresponding `buildXXX()` must be
@@ -261,6 +261,7 @@ Sibling firmware repos under `E:\STM_Programming\`:
 | `PLCJS_ETH_MODULE_4RTD_D4MG_...` | `0x504C0403` | `0x04D1` | `build4RTD()` |
 | `PLCJS_ETH_MODULE_8AIC_D4MG_...` | `0x504C0804` | `0x08AC` | `build8AIC()` |
 | `PLCJS_ETH_MODULE_8AOC_D4MG_...` | `0x504C0806` | `0x08A0` | `build8AOC()` |
+| `PLCJS_ETH_MODULE_8UAI_D4MG_...` | `0x504C0807` | `0x08A7` | `build8UAI()` — RTD/KTY table bodies (1000 + ch*128) deliberately not listed: the Online tab reads row by row. |
 | `BOOTLOADER_PLCJS_ETH_MODULE_STM32F407VGT6` | — | — | `BootloaderProtocol.*`, `FwWorker.*` |
 
 The authoritative definitions live in the firmware repos:
